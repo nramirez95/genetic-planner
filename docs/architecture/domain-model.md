@@ -1,0 +1,7 @@
+PlanningProblem
+Resource
+Activity
+Location
+TimeSlot
+Assignment
+Schedule

@@ -1,0 +1,13 @@
+PlanningProblem
+↓
+Encoding
+↓
+Genotype
+↓
+Evolution
+↓
+Genotype
+↓
+Decoding
+↓
+Schedule

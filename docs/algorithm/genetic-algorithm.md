@@ -1,0 +1,8 @@
+Genetic algorithm overview
+Population
+Selection
+Crossover
+Mutation
+Elitism
+Termination
+Jenetics
