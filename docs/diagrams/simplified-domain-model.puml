@@ -1,0 +1,29 @@
+@startuml
+title Genetic Planner - Simplified Domain Model
+
+class PlanningProblem
+class Resource
+class Activity
+class ResourceRequirement
+class TimeSlot
+class Location
+class Constraint
+class Schedule
+class Assignment
+
+PlanningProblem "1" *-- "*" Resource
+PlanningProblem "1" *-- "*" Activity
+PlanningProblem "1" *-- "*" TimeSlot
+PlanningProblem "1" *-- "*" Location
+PlanningProblem "1" *-- "*" Constraint
+
+Activity "1" *-- "*" ResourceRequirement
+
+Schedule "1" *-- "*" Assignment
+
+Assignment --> Activity
+Assignment --> TimeSlot
+Assignment --> Resource
+Assignment --> Location
+
+@enduml

@@ -1703,3 +1703,83 @@ The following concepts are intentionally excluded from the MVP domain but may be
 * Dynamic schedule repair after changes.
 
 These extensions should only be introduced if they provide sufficient value to justify the additional complexity.
+
+---
+
+## 27. Domain UML Overview
+
+The domain UML diagram provides a simplified visual representation of the main concepts used by Genetic Planner and the relationships between them.
+
+The diagram is stored in:
+
+```text
+/docs/diagrams/domain-model.puml
+```
+
+The central element is `PlanningProblem`, which aggregates the information required to describe a planning scenario:
+
+* `Resource`: entities that may participate in scheduled activities.
+* `Activity`: schedulable units that must be placed in the final schedule.
+* `TimeSlot`: available temporal periods.
+* `Location`: optional physical or logical places where activities may occur.
+* `Constraint`: rules used to evaluate whether a schedule is valid or desirable.
+
+Each `Activity` may contain one or more `ResourceRequirement` elements. These requirements define the type and number of resources needed by the activity without introducing domain-specific concepts such as teachers or employees.
+
+The result of the planning process is represented by `Schedule`, which contains a collection of `Assignment` objects.
+
+Each `Assignment` links:
+
+* one `Activity`,
+* one `TimeSlot`,
+* zero or more assigned `Resource` objects,
+* and optionally one `Location`.
+
+The model therefore separates the **definition of the planning problem** from the **resulting schedule**:
+
+```text
+PlanningProblem
+      │
+      ▼
+Genetic Engine
+      │
+      ▼
+Schedule
+      │
+      ▼
+Assignments
+```
+
+This separation allows the same Genetic Engine to operate on different planning scenarios, such as academic timetables and work shift scheduling, without requiring domain-specific modifications.
+
+### Main Cardinalities
+
+The most relevant relationships represented in the UML are:
+
+```text
+PlanningProblem 1 ---- 0..* Resource
+PlanningProblem 1 ---- 1..* Activity
+PlanningProblem 1 ---- 1..* TimeSlot
+PlanningProblem 1 ---- 0..* Location
+PlanningProblem 1 ---- 0..* Constraint
+
+Activity 1 ---- 0..* ResourceRequirement
+
+Schedule 1 ---- 1..* Assignment
+
+Assignment * ---- 1 Activity
+Assignment * ---- 1 TimeSlot
+Assignment * ---- 0..* Resource
+Assignment * ---- 0..1 Location
+```
+
+These cardinalities reflect the MVP design decisions:
+
+* A planning problem must contain at least one activity and one available time slot.
+* Resources and locations are optional because some planning scenarios may not require them.
+* An activity may require several resources.
+* Each activity produces one assignment in a complete schedule.
+* An assignment always has one activity and one time slot.
+* An assignment may contain multiple resources and optionally one location.
+
+The UML intentionally remains domain-independent. Concepts such as `Teacher`, `Employee`, `Subject`, or `WorkShift` are not represented as core domain classes. They are mapped to the generic model through planning templates.

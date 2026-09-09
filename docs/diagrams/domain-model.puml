@@ -1,0 +1,156 @@
+@startuml
+title Genetic Planner - Generic Domain Model
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+
+package "Planning Domain" {
+
+    class PlanningProblem {
+        + id: String
+        + name: String
+        + templateType: String?
+    }
+
+    class PlanningHorizon {
+        + start: LocalDateTime
+        + end: LocalDateTime
+    }
+
+    class ResourceType {
+        + id: String
+        + name: String
+    }
+
+    class Resource {
+        + id: String
+        + name: String
+        + typeId: String
+        + attributes: Map<String, String>
+    }
+
+    class Activity {
+        + id: String
+        + name: String
+        + type: String?
+        + allowedTimeSlotIds: Set<String>?
+        + allowedLocationIds: Set<String>?
+        + attributes: Map<String, String>
+    }
+
+    class ResourceRequirement {
+        + id: String
+        + resourceTypeId: String
+        + quantity: Int
+        + candidateResourceIds: Set<String>?
+    }
+
+    class TimeSlot {
+        + id: String
+        + start: LocalDateTime
+        + end: LocalDateTime
+        + label: String?
+    }
+
+    class Location {
+        + id: String
+        + name: String
+        + type: String?
+        + capacity: Int?
+        + attributes: Map<String, String>
+    }
+
+    abstract class Constraint {
+        + type: ConstraintType
+        + weight: Double
+    }
+
+    enum ConstraintType {
+        HARD
+        SOFT
+    }
+
+    class Schedule {
+        + planningProblemId: String
+    }
+
+    class Assignment {
+        + activityId: String
+        + timeSlotId: String
+        + resourceAssignments: Map<String, List<String>>
+        + locationId: String?
+    }
+
+    class PlanningResult {
+        + fitness: Double
+        + hardViolations: Int
+        + softViolations: Int
+        + generations: Long
+        + executionTimeMs: Long
+    }
+}
+
+PlanningProblem "1" *-- "1" PlanningHorizon : planningHorizon
+PlanningProblem "1" *-- "0..*" ResourceType : resourceTypes
+PlanningProblem "1" *-- "0..*" Resource : resources
+PlanningProblem "1" *-- "1..*" Activity : activities
+PlanningProblem "1" *-- "1..*" TimeSlot : timeSlots
+PlanningProblem "1" *-- "0..*" Location : locations
+PlanningProblem "1" *-- "0..*" Constraint : constraints
+
+Resource --> ResourceType : type
+
+Activity "1" *-- "0..*" ResourceRequirement : requirements
+ResourceRequirement --> ResourceType : required type
+ResourceRequirement --> "0..*" Resource : candidates
+
+Activity --> "0..*" TimeSlot : allowed slots
+Activity --> "0..*" Location : allowed locations
+
+Constraint --> ConstraintType
+
+Schedule "1" *-- "1..*" Assignment : assignments
+Schedule --> PlanningProblem : solves
+
+Assignment --> "1" Activity : activity
+Assignment --> "1" TimeSlot : time slot
+Assignment --> "0..*" Resource : assigned resources
+Assignment --> "0..1" Location : location
+
+PlanningResult "1" *-- "1" Schedule : schedule
+
+note right of Activity
+  An Activity is an atomic
+  scheduling unit.
+
+  Each Activity produces
+  exactly one Assignment.
+end note
+
+note right of TimeSlot
+  TimeSlot duration may vary.
+
+  Academic example:
+  09:00 - 10:00
+
+  Work example:
+  08:00 - 16:00
+end note
+
+note bottom of Resource
+  Resource is domain-independent.
+
+  Examples:
+  - Teacher
+  - Student Group
+  - Employee
+  - Machine
+end note
+
+note bottom of Constraint
+  Detailed constraint hierarchy
+  will be defined separately
+  in constraints.puml
+end note
+
+@enduml
