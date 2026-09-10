@@ -1,0 +1,60 @@
+@startuml
+title Genetic Planner - User Journey
+
+start
+
+:Dashboard;
+:New Planning;
+:Choose Template;
+
+if (Selected template?) then (Academic)
+    :Academic Scheduling;
+else (Work Shift)
+    :Work Shift Scheduling;
+endif
+
+:Configure Problem;
+
+if (Problem configuration valid?) then (Yes)
+else (No)
+    :Show validation errors;
+    :Correct problem configuration;
+    -> Configure Problem;
+endif
+
+:Configure Constraints;
+:Review;
+
+if (Configuration valid?) then (Yes)
+    :Generate Schedule;
+else (No)
+    :Show validation errors;
+    :Edit configuration;
+    -> Configure Problem;
+endif
+
+:Run optimization;
+
+if (Feasible solution found?) then (Yes)
+    :Show Schedule;
+    :Show Solution Quality;
+else (No)
+    :Show Best Solution Found;
+    :Show Hard Constraint Violations;
+endif
+
+:Results;
+
+if (Next action?) then (Edit)
+    :Edit Configuration;
+    -> Configure Problem;
+elseif (Generate Again)
+    :Generate Again;
+    -> Run optimization;
+else (Dashboard)
+    :Back to Dashboard;
+endif
+
+stop
+
+@enduml
