@@ -1,0 +1,40 @@
+@startsalt
+{
+  {+
+    Constraints
+    Define the rules used to evaluate generated schedules.
+  }
+
+  {+
+    HARD CONSTRAINTS
+    Required for a valid schedule.
+  }
+
+  {
+    Enabled | Constraint | Weight
+    [X] | No overlapping assignments | 1000
+    [X] | Respect resource availability | 1000
+    [X] | Required resources | 1000
+  }
+
+  {+
+    SOFT CONSTRAINTS
+    Used to improve schedule quality.
+  }
+
+  {
+    Enabled | Constraint | Weight
+    [X] | Preferred time slots | "10"
+    [X] | Maximum consecutive activities | "5"
+    [ ] | Minimum assignments | "10"
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Save & Next ]
+  }
+}
+@endsalt

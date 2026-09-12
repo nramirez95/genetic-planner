@@ -1,0 +1,24 @@
+@startsalt
+{
+  {+
+    Generating Schedule
+
+    ==========================================
+
+    ( Loading... )
+
+    Optimising your schedule...
+
+    Genetic Planner is evaluating
+    candidate schedules and searching
+    for the best solution.
+
+    Optimization mode:
+    BALANCED
+
+    ==========================================
+
+    Please keep this page open.
+  }
+}
+@endsalt

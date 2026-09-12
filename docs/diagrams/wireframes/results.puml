@@ -1,0 +1,37 @@
+@startsalt
+{
+  {+
+    Computer Science Timetable
+    [ Regenerate ]
+  }
+
+  {
+    "✓ Feasible Schedule"
+  }
+
+  {
+    { Fitness | 35 }
+    |
+    { HARD | 0 violations }
+    |
+    { SOFT | 5 violations }
+    |
+    { Time | 1.8 s }
+  }
+
+  {
+    [ Calendar ] | [ Table ] | [ Constraint Details ]
+  }
+
+  {+
+    {
+      Time | Monday | Tuesday | Wednesday | Thursday | Friday
+      09:00 | Mathematics | Physics | ... | ... | ...
+      10:00 | Programming | Mathematics | ... | ... | ...
+      11:00 | Databases | Programming | ... | ... | ...
+    }
+  }
+
+  [ Back to Dashboard ]
+}
+@endsalt

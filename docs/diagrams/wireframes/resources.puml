@@ -1,0 +1,38 @@
+@startsalt
+{
+  {+
+    Resources
+    Configure the people or groups required by activities.
+  }
+
+  {
+    [ Teachers ]
+    |
+    [ Student Groups ]
+  }
+
+  {+
+    Teachers
+    .
+    [ + Add Teacher ]
+  }
+
+  {
+    Name | Availability | Actions
+    Ana López | Mon-Fri | [ Edit ] [ Delete ]
+    Carlos Ruiz | Mon, Tue, Thu | [ Edit ] [ Delete ]
+  }
+
+  {
+    2 teachers
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Save & Next ]
+  }
+}
+@endsalt

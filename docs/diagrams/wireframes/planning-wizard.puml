@@ -1,0 +1,42 @@
+@startsalt
+{
+  {+
+    New Planning - Academic Scheduling
+  }
+
+  {
+    [✓ Template]
+    |
+    [✓ Basics]
+    |
+    [Resources]
+    |
+    [Activities]
+    |
+    [Time Slots]
+    |
+    [Constraints]
+    |
+    [Optimization]
+    |
+    [Review]
+  }
+
+  {+
+    Step Content
+
+    Configure the current planning step here.
+
+    The selected template determines
+    terminology, defaults and available options.
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Save & Next ]
+  }
+}
+@endsalt

@@ -1,0 +1,29 @@
+@startsalt
+{
+  {+
+    Activities
+    Define what must be placed into the schedule.
+    .
+    [ + Add Activity ]
+  }
+
+  {
+    Activity | Required Resources | Sessions | Actions
+    Mathematics | Teacher + Group 1A | 3 | [ Edit ] [ Delete ]
+    Programming | Teacher + Group 2A | 2 | [ Edit ] [ Delete ]
+    Databases | Teacher + Group 1B | 2 | [ Edit ] [ Delete ]
+  }
+
+  {
+    7 schedulable activities will be generated.
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Save & Next ]
+  }
+}
+@endsalt

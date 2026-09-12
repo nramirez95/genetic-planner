@@ -1,0 +1,97 @@
+@startsalt
+{
+  {+
+    Review
+
+    Computer Science Timetable
+    Academic Scheduling
+  }
+
+  {
+    {+
+      Resources
+      8 teachers
+      4 student groups
+      .
+      [ Edit ]
+    }
+    |
+    {+
+      Activities
+      24 activities
+      .
+      [ Edit ]
+    }
+  }
+
+  {
+    {+
+      Time Slots
+      30 periods
+      .
+      [ Edit ]
+    }
+    |
+    {+
+      Locations
+      6 classrooms
+      .
+      [ Edit ]
+    }
+  }
+
+  {+
+    Constraints
+
+    3 HARD
+    2 SOFT
+
+    [ Edit ]
+  }
+
+  {+
+    Optimization
+
+    BALANCED
+
+    [ Edit ]
+  }
+
+  {+
+    Validation
+
+    ✓ Planning problem is valid
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Generate Schedule ]
+  }
+}
+@endsalt
+
+@startsalt
+{
+  {+
+    Review
+
+    ⚠ Planning problem requires attention
+
+    Mathematics has no valid time slot.
+    Group 1A does not exist.
+
+    [ Review Activities ]
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Generate Schedule ]
+  }
+}
+@endsalt

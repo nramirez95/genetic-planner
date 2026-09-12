@@ -1,0 +1,26 @@
+@startsalt
+{
+  {+
+    Genetic Planner
+  }
+
+  {
+    Dashboard | New Planning
+  }
+
+  {+
+    Dashboard
+    Create and optimise schedules using genetic algorithms.
+    .
+    [ + New Planning ]
+  }
+
+  {+
+    Recent Planning Problems
+    {
+      Computer Science Timetable | Academic Scheduling | [ Open ]
+      Office Weekly Shifts | Work Shift Scheduling | [ Open ]
+    }
+  }
+}
+@endsalt

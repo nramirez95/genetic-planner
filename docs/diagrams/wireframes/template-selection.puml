@@ -1,0 +1,36 @@
+@startsalt
+{
+  {+
+    New Planning
+    Choose a planning template
+  }
+
+  {
+    {+
+      Academic Scheduling
+      Generate class and teaching schedules.
+      .
+      Teachers
+      Student Groups
+      Classes
+      Classrooms
+      .
+      [ Select ]
+    }
+    |
+    {+
+      Work Shift Scheduling
+      Generate employee work shift schedules.
+      .
+      Employees
+      Work Assignments
+      Shifts
+      Workplaces
+      .
+      [ Select ]
+    }
+  }
+
+  [ Cancel ]
+}
+@endsalt

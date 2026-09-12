@@ -1,0 +1,73 @@
+@startsalt
+{
+  {+
+    Time Slots & Locations
+  }
+
+  {
+    [ Time Slots ]
+    |
+    [ Locations ]
+  }
+
+  {+
+    Time Slots
+    .
+    [ + Add Period ]
+  }
+
+  {
+    Day | Start | End | Actions
+    Monday | 09:00 | 10:00 | [ Edit ] [ Delete ]
+    Monday | 10:00 | 11:00 | [ Edit ] [ Delete ]
+    Monday | 11:00 | 12:00 | [ Edit ] [ Delete ]
+    Tuesday | 09:00 | 10:00 | [ Edit ] [ Delete ]
+  }
+
+  {
+    [ + Generate recurring periods ]
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Save & Next ]
+  }
+}
+@endsalt
+@startsalt
+{
+  {+
+    Time Slots & Locations
+  }
+
+  {
+    [ Time Slots ]
+    |
+    [ Locations ]
+  }
+
+  {+
+    Locations
+    .
+    [ + Add Classroom ]
+  }
+
+  {
+    Name | Capacity | Actions
+    Room 101 | 30 | [ Edit ] [ Delete ]
+    Computer Lab | 25 | [ Edit ] [ Delete ]
+    Physics Lab | 20 | [ Edit ] [ Delete ]
+  }
+
+  {
+    [ Back ]
+    |
+    .
+    |
+    [ Save & Next ]
+  }
+}
+@endsalt
