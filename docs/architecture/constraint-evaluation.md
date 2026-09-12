@@ -2,494 +2,93 @@
 
 ## 1. Purpose
 
-This document defines how Genetic Planner evaluates constraints and aggregates their penalties.
+This document defines how Genetic Planner evaluates constraints and aggregates their penalties when assessing a candidate `Schedule`.
 
-The goal is to translate constraint violations into numerical values that can later be used by the Genetic Algorithm fitness function.
+The evaluation model must:
 
-The evaluation strategy must:
-
-* Strongly prioritize HARD constraint satisfaction.
-* Allow SOFT constraints to influence solution quality.
-* Support configurable constraint weights.
-* Preserve enough information to explain violations.
+* Support both HARD and SOFT constraints.
+* Preserve the semantic difference between HARD and SOFT constraints.
+* Allow weighted penalties.
+* Produce an explainable result.
+* Separate constraint evaluation from genetic optimization.
+* Provide the information required by the fitness function.
 * Remain independent from specific planning domains.
-* Allow new constraints to be introduced without modifying the Genetic Engine.
 
-The conceptual strategy is:
+The central principle is:
 
-```text
-HARD violation
-      ↓
-High penalty
-
-SOFT violation
-      ↓
-Penalty × weight
-```
+> **Every constraint produces a penalty, while HARD constraints additionally determine whether a Schedule is feasible.**
 
 ---
 
-# 2. Evaluation Overview
+# 2. Evaluation Flow
 
-Each configured constraint evaluates a candidate `Schedule`.
+Constraint evaluation occurs after a candidate genotype has been decoded into a domain `Schedule`.
 
-```text
+The general flow is:
+
+```text id="62fgcz"
+Genotype
+    ↓
+Decoder
+    ↓
 Schedule
-   │
-   ▼
-Constraint.evaluate()
-   │
-   ▼
-ConstraintResult
+    ↓
+ConstraintEvaluator
+    ↓
+ConstraintResult[]
+    ↓
+ScheduleEvaluation
+    ↓
+Fitness Function
 ```
 
-The Genetic Engine evaluates every constraint associated with the `PlanningProblem`.
+The Constraint Engine does not depend on Jenetics.
 
-Conceptually:
+It evaluates domain objects only.
 
-```kotlin
-for (constraint in planningProblem.constraints) {
-    val result = constraint.evaluate(schedule)
+---
+
+# 3. Constraint Model
+
+The common constraint interface is:
+
+```kotlin id="gwnd8w"
+enum class ConstraintType {
+    HARD,
+    SOFT
+}
+
+interface Constraint {
+    val id: String
+    val name: String
+    val type: ConstraintType
+    val weight: Double
+
+    fun evaluate(schedule: Schedule): ConstraintResult
 }
 ```
 
-The individual results are then aggregated into a global evaluation.
+Each concrete constraint is responsible for:
 
-```text
-ConstraintResult 1 ──┐
-ConstraintResult 2 ──┤
-ConstraintResult 3 ──┤
-ConstraintResult N ──┘
-          │
-          ▼
-ScheduleEvaluation
-```
+* Detecting its own violations.
+* Calculating the raw penalty.
+* Returning the detected violations.
 
----
+The generic evaluation layer is responsible for:
 
-# 3. Raw Penalty
-
-Each constraint is responsible for calculating its own raw penalty.
-
-The raw penalty represents the severity of the violation before applying global weighting rules.
-
-The general rule is:
-
-```text
-No violation
-    ↓
-rawPenalty = 0
-
-Violation
-    ↓
-rawPenalty > 0
-```
-
-The exact calculation depends on the constraint.
-
-For example:
-
-```text
-MaximumAssignments
-
-maximum = 5
-actual  = 8
-
-rawPenalty = 3
-```
-
-because the resource exceeds the configured maximum by three assignments.
-
-Another example:
-
-```text
-NoOverlap
-
-2 overlapping assignment pairs
-
-rawPenalty = 2
-```
-
-The constraint implementation therefore determines the meaning of its raw penalty.
+* Applying the constraint weight.
+* Aggregating HARD penalties.
+* Aggregating SOFT penalties.
+* Determining Schedule feasibility.
+* Producing the complete `ScheduleEvaluation`.
 
 ---
 
-# 4. Weighting System
+# 4. ConstraintResult
 
-Each constraint contains a configurable weight:
+Every evaluated constraint returns a result:
 
-```kotlin
-val weight: Double
-```
-
-The weight represents the relative importance of the constraint during optimization.
-
-The general weighted penalty is:
-
-```text
-weightedPenalty = rawPenalty × weight
-```
-
-For example:
-
-```text
-rawPenalty = 2
-weight = 3
-
-weightedPenalty = 6
-```
-
-The weight must satisfy:
-
-```text
-weight >= 0
-```
-
-Negative weights are not allowed because a violation must never improve a solution.
-
----
-
-# 5. HARD Constraint Strategy
-
-HARD constraints represent mandatory planning rules.
-
-A violation makes the candidate schedule infeasible.
-
-Examples include:
-
-```text
-NoOverlap
-Availability
-RequiredResource
-MaximumAssignments
-Capacity
-```
-
-The evaluation strategy must ensure that HARD violations dominate SOFT preferences.
-
-For this reason, HARD constraints receive an additional high penalty factor.
-
-Conceptually:
-
-```text
-hardWeightedPenalty =
-    rawPenalty
-    × weight
-    × HARD_PENALTY_FACTOR
-```
-
-where:
-
-```text
-HARD_PENALTY_FACTOR >> 1
-```
-
-For example:
-
-```text
-HARD_PENALTY_FACTOR = 1000
-```
-
-may be used as an initial value.
-
-Example:
-
-```text
-NoOverlapConstraint
-
-rawPenalty = 2
-weight = 1
-HARD_PENALTY_FACTOR = 1000
-
-hardWeightedPenalty = 2000
-```
-
-This makes a hard violation substantially more expensive than normal preference violations.
-
----
-
-# 6. HARD Feasibility
-
-Penalty magnitude alone does not determine whether a schedule is feasible.
-
-Feasibility is explicitly determined using HARD violations.
-
-```text
-hardViolationCount == 0
-        ↓
-Feasible schedule
-
-hardViolationCount > 0
-        ↓
-Infeasible schedule
-```
-
-This distinction is fundamental.
-
-For example:
-
-```text
-Schedule A
-Hard violations = 1
-Soft penalty = 0
-
-Schedule B
-Hard violations = 0
-Soft penalty = 500
-```
-
-Schedule B is feasible while Schedule A is not.
-
-Even if numeric penalties later become close because of configuration choices, the feasibility state remains explicit.
-
----
-
-# 7. Why HARD and SOFT Must Remain Separate
-
-A single undifferentiated penalty value could create undesirable situations.
-
-For example:
-
-```text
-Schedule A
-1 HARD violation
-0 SOFT violations
-
-Schedule B
-0 HARD violations
-100 SOFT violations
-```
-
-If all penalties were treated identically, the algorithm might incorrectly prefer Schedule A.
-
-Genetic Planner therefore keeps separate aggregated values:
-
-```text
-hardPenalty
-softPenalty
-```
-
-and separate violation counters:
-
-```text
-hardViolationCount
-softViolationCount
-```
-
-This preserves the semantic difference between feasibility and preference quality.
-
----
-
-# 8. HARD Penalty Factor
-
-The initial strategy introduces a global constant:
-
-```kotlin
-HARD_PENALTY_FACTOR
-```
-
-Conceptually:
-
-```kotlin
-const val HARD_PENALTY_FACTOR = 1000.0
-```
-
-The exact value is not considered final at this design stage.
-
-It must be large enough that HARD violations strongly dominate SOFT penalties during optimization.
-
-Its final calibration will be validated through experiments.
-
-The important design decision is:
-
-> HARD constraints receive a penalty multiplier significantly larger than SOFT constraints.
-
----
-
-# 9. SOFT Constraint Strategy
-
-SOFT constraints represent preferences.
-
-Their violation does not make a schedule infeasible.
-
-Examples include:
-
-```text
-MinimumAssignments
-MaxConsecutive
-PreferredTimeSlot
-DifferentDay
-```
-
-Their penalty is calculated as:
-
-```text
-softWeightedPenalty =
-    rawPenalty × weight
-```
-
-No additional HARD factor is applied.
-
-Example:
-
-```text
-PreferredTimeSlotConstraint
-
-rawPenalty = 3
-weight = 2
-
-softWeightedPenalty = 6
-```
-
-Another preference may be more important:
-
-```text
-MaxConsecutiveConstraint
-
-rawPenalty = 2
-weight = 5
-
-softWeightedPenalty = 10
-```
-
-The Genetic Engine should therefore prefer improving the second constraint when all other conditions are equal.
-
----
-
-# 10. Weight Interpretation
-
-Weights provide relative importance between constraints.
-
-Example:
-
-```text
-PreferredTimeSlot
-weight = 1
-
-MaxConsecutive
-weight = 5
-```
-
-A violation of `MaxConsecutive` has five times the optimization influence of an equivalent raw violation of `PreferredTimeSlot`.
-
-Weights therefore allow templates and users to express preference priorities.
-
----
-
-# 11. Default Weights
-
-For the MVP, templates should provide sensible default values.
-
-A simple initial strategy is:
-
-```text
-HARD constraints
-default weight = 1.0
-
-SOFT constraints
-default weight = 1.0
-```
-
-Users should not be required to understand weighting in order to generate a schedule.
-
-Advanced configuration may allow users to modify SOFT weights.
-
-For example:
-
-```text
-Preferred morning
-Importance:
-[ Low ] [ Medium ] [ High ]
-```
-
-which may internally map to numerical values such as:
-
-```text
-Low     → 1
-Medium  → 3
-High    → 5
-```
-
-The exact user-facing mapping may be refined during UX implementation.
-
----
-
-# 12. HARD Weight Configuration
-
-Although HARD constraints expose a `weight`, their type remains authoritative.
-
-For example:
-
-```text
-NoOverlap
-type = HARD
-weight = 0.5
-```
-
-is still a HARD constraint.
-
-Its violation still affects feasibility.
-
-The weight only adjusts optimization pressure.
-
-Therefore:
-
-```text
-ConstraintType
-        ↓
-determines feasibility
-
-Weight
-        ↓
-determines optimization importance
-```
-
-A HARD constraint must never become SOFT simply because it has a low weight.
-
----
-
-# 13. Recommended Weight Validation
-
-The following validation rules apply:
-
-```text
-weight >= 0
-```
-
-Additionally, for active HARD constraints it is recommended that:
-
-```text
-weight > 0
-```
-
-because a zero-weight HARD constraint would still make the schedule infeasible but would provide no numerical pressure for the Genetic Algorithm to eliminate the violation.
-
-For this reason, the MVP should reject:
-
-```text
-HARD constraint
-weight = 0
-```
-
-unless constraints later support an explicit enabled/disabled state.
-
-For SOFT constraints:
-
-```text
-weight = 0
-```
-
-may effectively disable their influence.
-
----
-
-# 14. ConstraintResult
-
-Each individual evaluation returns a `ConstraintResult`.
-
-Conceptually:
-
-```kotlin
+```kotlin id="fnqcih"
 data class ConstraintResult(
     val constraintId: String,
     val type: ConstraintType,
@@ -499,29 +98,9 @@ data class ConstraintResult(
 )
 ```
 
-For HARD constraints:
+Each individual violation is represented as:
 
-```text
-weightedPenalty =
-rawPenalty × weight × HARD_PENALTY_FACTOR
-```
-
-For SOFT constraints:
-
-```text
-weightedPenalty =
-rawPenalty × weight
-```
-
----
-
-# 15. ConstraintViolation
-
-Each individual violation should remain identifiable.
-
-Conceptually:
-
-```kotlin
+```kotlin id="1d7mt4"
 data class ConstraintViolation(
     val message: String,
     val penalty: Double,
@@ -529,36 +108,347 @@ data class ConstraintViolation(
 )
 ```
 
-Example:
+This provides more information than a simple:
 
-```text
-Constraint:
-NoOverlapConstraint
-
-Violation:
-Teacher Ana has overlapping assignments
-between Mathematics 1A and Physics 2A.
-
-Related entities:
-teacher-ana
-math-1a
-physics-2a
-
-Penalty:
-1
+```text id="zmuaq1"
+true / false
 ```
 
-This information allows Genetic Planner to explain why a schedule was penalized.
+and supports later:
+
+* Fitness calculation.
+* Debugging.
+* User explanations.
+* Experimental analysis.
+* Visualization of generated schedules.
 
 ---
 
-# 16. Aggregated Evaluation Result
+# 5. Raw Penalty
 
-After evaluating all constraints, Genetic Planner produces an aggregated result.
+The `rawPenalty` represents the unweighted severity produced by a constraint.
 
-Conceptually:
+In the simplest case:
 
-```kotlin
+```text id="ycc0f7"
+rawPenalty =
+number of violations
+```
+
+Example:
+
+```text id="rxj4sk"
+NoOverlapConstraint
+
+2 overlaps detected
+
+rawPenalty = 2
+```
+
+However, a concrete constraint may assign different penalties to different violations if necessary.
+
+For example:
+
+```text id="402rfq"
+Violation 1 penalty = 1
+Violation 2 penalty = 2
+
+rawPenalty = 3
+```
+
+Therefore:
+
+```text id="4ss5s9"
+rawPenalty =
+Σ violation penalties
+```
+
+---
+
+# 6. Constraint Weight
+
+Every constraint has a numeric `weight`.
+
+The weight determines how strongly its violations affect optimization.
+
+The generic formula is:
+
+```text id="cu3tad"
+weightedPenalty =
+rawPenalty × weight
+```
+
+This formula applies equally to HARD and SOFT constraints.
+
+Example:
+
+```text id="kx1pz4"
+rawPenalty = 4
+weight = 10
+
+weightedPenalty =
+4 × 10
+=
+40
+```
+
+---
+
+# 7. HARD and SOFT Semantics
+
+HARD and SOFT constraints use the same penalty formula:
+
+```text id="r35dk7"
+weightedPenalty =
+rawPenalty × weight
+```
+
+However, their meaning is different.
+
+## HARD constraint
+
+A HARD constraint represents a mandatory planning rule.
+
+If a HARD constraint has one or more violations:
+
+```text id="rw5bfm"
+Schedule
+    ↓
+infeasible
+```
+
+Example:
+
+```text id="0x2fyx"
+NoOverlapConstraint
+type = HARD
+weight = 1000
+```
+
+A violation affects:
+
+* Fitness.
+* Feasibility.
+
+## SOFT constraint
+
+A SOFT constraint represents a preference or quality objective.
+
+If a SOFT constraint is violated:
+
+```text id="vwd8q1"
+Schedule
+    ↓
+still feasible
+    ↓
+lower quality
+```
+
+Example:
+
+```text id="2j4r7u"
+PreferredTimeSlotConstraint
+type = SOFT
+weight = 10
+```
+
+A violation affects fitness but not feasibility.
+
+---
+
+# 8. HARD Is Not Defined by Weight
+
+A constraint is HARD because of:
+
+```text id="7np1ph"
+type = HARD
+```
+
+not because it has a weight of `1000`.
+
+For example:
+
+```text id="mqg07m"
+NoOverlapConstraint
+
+type = HARD
+weight = 1000
+```
+
+means:
+
+```text id="mjr953"
+HARD
+→ violation makes Schedule infeasible
+
+1000
+→ violation has high optimization cost
+```
+
+These concepts must remain separate.
+
+Therefore:
+
+```text id="a6l1l9"
+ConstraintType
+=
+semantic meaning
+```
+
+while:
+
+```text id="9lxrbp"
+weight
+=
+optimization importance
+```
+
+---
+
+# 9. Default Weighting Strategy
+
+For the MVP, HARD constraints normally use much larger weights than SOFT constraints.
+
+Typical values are:
+
+```text id="kjsy2d"
+HARD
+
+NoOverlap               1000
+Availability            1000
+RequiredResource        1000
+MaximumAssignments      1000
+```
+
+and:
+
+```text id="xyf11b"
+SOFT
+
+PreferredTimeSlot         10
+MaxConsecutive              5
+MinimumAssignments         10
+DifferentDay                5
+```
+
+These values are defaults rather than part of the definition of HARD or SOFT.
+
+---
+
+# 10. Active Constraint Weight Validation
+
+An active constraint must have:
+
+```text id="d96det"
+weight > 0
+```
+
+A weight of zero would make violations invisible to the Genetic Algorithm.
+
+For the MVP:
+
+```text id="eihpb9"
+active HARD weight = 0
+```
+
+must be rejected.
+
+The same validation should normally apply to active SOFT constraints.
+
+If a constraint should not affect optimization, it should be disabled instead of configured with zero weight.
+
+---
+
+# 11. Evaluating One Constraint
+
+Suppose:
+
+```text id="hhrecr"
+PreferredTimeSlotConstraint
+
+type = SOFT
+weight = 10
+```
+
+and evaluation finds:
+
+```text id="3rlu6k"
+4 violations
+```
+
+with one penalty point each.
+
+Then:
+
+```text id="uvr2ko"
+rawPenalty = 4
+```
+
+and:
+
+```text id="wna6vd"
+weightedPenalty =
+4 × 10
+=
+40
+```
+
+The result becomes conceptually:
+
+```text id="16mhq5"
+ConstraintResult
+
+type = SOFT
+violations = 4
+rawPenalty = 4
+weightedPenalty = 40
+```
+
+---
+
+# 12. Evaluating a HARD Constraint
+
+Suppose:
+
+```text id="g16zhx"
+NoOverlapConstraint
+
+type = HARD
+weight = 1000
+```
+
+and:
+
+```text id="xkwq1p"
+2 overlaps
+```
+
+Then:
+
+```text id="ehbta0"
+rawPenalty = 2
+
+weightedPenalty =
+2 × 1000
+=
+2000
+```
+
+Because this is a HARD constraint:
+
+```text id="2zwdlt"
+hardViolationCount > 0
+```
+
+and therefore the final Schedule is infeasible.
+
+---
+
+# 13. ScheduleEvaluation
+
+After evaluating every active constraint, Genetic Planner creates:
+
+```kotlin id="irykfx"
 data class ScheduleEvaluation(
     val feasible: Boolean,
     val hardViolationCount: Int,
@@ -570,302 +460,406 @@ data class ScheduleEvaluation(
 )
 ```
 
+This object is the complete evaluation of a candidate `Schedule`.
+
+---
+
+# 14. HARD Violation Count
+
+The number of HARD violations is:
+
+```text id="s27xy1"
+hardViolationCount =
+Σ number of violations
+from HARD constraints
+```
+
+Example:
+
+```text id="v33ri6"
+NoOverlap
+2 violations
+
+Availability
+1 violation
+```
+
+produces:
+
+```text id="jg28kp"
+hardViolationCount =
+2 + 1
+=
+3
+```
+
+---
+
+# 15. SOFT Violation Count
+
+Similarly:
+
+```text id="gwd1vj"
+softViolationCount =
+Σ number of violations
+from SOFT constraints
+```
+
+Example:
+
+```text id="y1i57t"
+PreferredTimeSlot
+4 violations
+
+MaxConsecutive
+2 violations
+```
+
+produces:
+
+```text id="h5q37u"
+softViolationCount =
+4 + 2
+=
+6
+```
+
+---
+
+# 16. HARD Penalty Aggregation
+
+The total HARD penalty is:
+
+```text id="r4iqyn"
+hardPenalty =
+Σ weightedPenalty
+for every HARD constraint
+```
+
+Example:
+
+```text id="gtcthh"
+NoOverlap
+weightedPenalty = 2000
+
+Availability
+weightedPenalty = 1000
+```
+
+Therefore:
+
+```text id="68o6bt"
+hardPenalty =
+2000 + 1000
+=
+3000
+```
+
+---
+
+# 17. SOFT Penalty Aggregation
+
+The total SOFT penalty is:
+
+```text id="8fxusq"
+softPenalty =
+Σ weightedPenalty
+for every SOFT constraint
+```
+
+Example:
+
+```text id="jjgyqg"
+PreferredTimeSlot
+weightedPenalty = 40
+
+MaxConsecutive
+weightedPenalty = 10
+```
+
+Therefore:
+
+```text id="h7y1ld"
+softPenalty =
+40 + 10
+=
+50
+```
+
+---
+
+# 18. Total Penalty
+
+The complete Schedule penalty is:
+
+```text id="zvp83f"
+totalPenalty =
+hardPenalty + softPenalty
+```
+
+Example:
+
+```text id="3o3ccv"
+hardPenalty = 3000
+softPenalty = 50
+```
+
+produces:
+
+```text id="z01i8b"
+totalPenalty =
+3000 + 50
+=
+3050
+```
+
+The Fitness Function uses this value during optimization.
+
+---
+
+# 19. Feasibility
+
+Schedule feasibility depends only on HARD constraints.
+
+The rule is:
+
+```text id="jdt2bc"
+feasible =
+hardViolationCount == 0
+```
+
+Therefore:
+
+```text id="i7rffs"
+HARD violations = 0
+→ feasible = true
+```
+
+while:
+
+```text id="fur19j"
+HARD violations > 0
+→ feasible = false
+```
+
+SOFT violations never make a Schedule infeasible.
+
+---
+
+# 20. Example — Complete Evaluation
+
+Suppose the following constraints are evaluated.
+
+## HARD
+
+```text id="te67dj"
+NoOverlapConstraint
+
+violations = 2
+rawPenalty = 2
+weight = 1000
+
+weightedPenalty =
+2 × 1000
+=
+2000
+```
+
+```text id="kxslf4"
+AvailabilityConstraint
+
+violations = 1
+rawPenalty = 1
+weight = 1000
+
+weightedPenalty =
+1 × 1000
+=
+1000
+```
+
+## SOFT
+
+```text id="k0ibzm"
+PreferredTimeSlotConstraint
+
+violations = 4
+rawPenalty = 4
+weight = 10
+
+weightedPenalty =
+4 × 10
+=
+40
+```
+
+```text id="2ig5uj"
+MaxConsecutiveConstraint
+
+violations = 2
+rawPenalty = 2
+weight = 5
+
+weightedPenalty =
+2 × 5
+=
+10
+```
+
+---
+
+# 21. Complete Example Result
+
 The aggregated values are:
 
-```text
-hardViolationCount
-    = total HARD violations
-
-softViolationCount
-    = total SOFT violations
-
-hardPenalty
-    = sum of weighted HARD penalties
-
-softPenalty
-    = sum of weighted SOFT penalties
+```text id="rkhnrk"
+hardViolationCount =
+2 + 1
+=
+3
 ```
 
----
+```text id="k4imtw"
+softViolationCount =
+4 + 2
+=
+6
+```
 
-# 17. Total Penalty
+```text id="rxz594"
+hardPenalty =
+2000 + 1000
+=
+3000
+```
 
-The global penalty is:
+```text id="bb5jwg"
+softPenalty =
+40 + 10
+=
+50
+```
 
-```text
+```text id="ri5927"
 totalPenalty =
-    hardPenalty + softPenalty
+3000 + 50
+=
+3050
 ```
 
-However, the individual components must remain available.
+Since:
 
-Therefore, Genetic Planner should never retain only:
-
-```text
-totalPenalty = 2015
+```text id="fv9rxg"
+hardViolationCount = 3
 ```
 
-It should preserve:
+the result is:
 
-```text
-hardPenalty = 2000
-softPenalty = 15
-totalPenalty = 2015
+```text id="4x2wbr"
+feasible = false
 ```
 
-This makes evaluation easier to understand and allows the future fitness function to treat the components differently if necessary.
+Therefore:
+
+```text id="ow1fbz"
+ScheduleEvaluation
+
+feasible = false
+
+hardViolationCount = 3
+softViolationCount = 6
+
+hardPenalty = 3000
+softPenalty = 50
+
+totalPenalty = 3050
+```
 
 ---
 
-# 18. Feasibility Calculation
+# 22. Feasible Schedule Example
 
-The feasibility value is derived from HARD violations:
+Consider:
 
-```kotlin
-val feasible =
-    hardViolationCount == 0
+```text id="swj7ql"
+HARD violations = 0
+
+PreferredTimeSlot
+3 violations × 10 = 30
+
+MaxConsecutive
+1 violation × 5 = 5
 ```
 
-This means that a schedule with:
+Then:
 
-```text
+```text id="4rxztt"
+hardViolationCount = 0
+softViolationCount = 4
+
 hardPenalty = 0
-softPenalty = 300
+softPenalty = 35
+
+totalPenalty = 35
+
+feasible = true
 ```
 
-is feasible.
+This demonstrates that:
 
-A schedule with:
+```text id="bntd85"
+fitness > 0
+```
 
-```text
-hardPenalty = 1000
+does not necessarily mean that the Schedule is infeasible.
+
+---
+
+# 23. Ideal Evaluation
+
+The ideal candidate produces:
+
+```text id="lqsb8r"
+hardViolationCount = 0
+softViolationCount = 0
+
+hardPenalty = 0
 softPenalty = 0
+
+totalPenalty = 0
+
+feasible = true
 ```
 
-is infeasible.
+Therefore:
+
+```text id="pzkk2j"
+totalPenalty = 0
+```
+
+represents the ideal evaluation.
 
 ---
 
-# 19. Aggregation Example
+# 24. Evaluation Algorithm
 
-Suppose a generated schedule produces:
+Conceptually, evaluation can be implemented as:
 
-```text
-NoOverlapConstraint
-type = HARD
-rawPenalty = 2
-weight = 1
-
-AvailabilityConstraint
-type = HARD
-rawPenalty = 1
-weight = 2
-
-PreferredTimeSlotConstraint
-type = SOFT
-rawPenalty = 3
-weight = 2
-
-MaxConsecutiveConstraint
-type = SOFT
-rawPenalty = 1
-weight = 5
-```
-
-Using:
-
-```text
-HARD_PENALTY_FACTOR = 1000
-```
-
-the results are:
-
-```text
-NoOverlap
-2 × 1 × 1000
-= 2000
-
-Availability
-1 × 2 × 1000
-= 2000
-
-PreferredTimeSlot
-3 × 2
-= 6
-
-MaxConsecutive
-1 × 5
-= 5
-```
-
-Aggregated result:
-
-```text
-Hard violations = 3
-Soft violations = 4
-
-Hard penalty = 4000
-Soft penalty = 11
-
-Total penalty = 4011
-
-Feasible = false
-```
-
----
-
-# 20. Feasible Schedule Example
-
-Consider another candidate:
-
-```text
-NoOverlap
-rawPenalty = 0
-
-Availability
-rawPenalty = 0
-
-PreferredTimeSlot
-rawPenalty = 4
-weight = 2
-
-MaxConsecutive
-rawPenalty = 2
-weight = 5
-```
-
-Result:
-
-```text
-Hard violations = 0
-Soft violations = 6
-
-Hard penalty = 0
-
-Soft penalty =
-(4 × 2) + (2 × 5)
-= 18
-
-Total penalty = 18
-
-Feasible = true
-```
-
-This schedule is feasible even though it does not satisfy all user preferences.
-
----
-
-# 21. Comparing Candidate Schedules
-
-Evaluation should prioritize candidates conceptually in the following order:
-
-```text
-1. Fewer HARD violations
-        ↓
-2. Lower HARD penalty
-        ↓
-3. Lower SOFT penalty
-```
-
-For example:
-
-```text
-Schedule A
-Hard violations = 0
-Soft penalty = 30
-
-Schedule B
-Hard violations = 1
-Soft penalty = 0
-```
-
-Preferred:
-
-```text
-Schedule A
-```
-
-because feasibility has priority.
-
-Among feasible schedules:
-
-```text
-Schedule A
-Hard violations = 0
-Soft penalty = 30
-
-Schedule B
-Hard violations = 0
-Soft penalty = 15
-```
-
-Preferred:
-
-```text
-Schedule B
-```
-
-This ordering will later guide the fitness function design.
-
----
-
-# 22. Constraint Evaluation Service
-
-Constraint aggregation should be performed by a generic component.
-
-Conceptually:
-
-```kotlin
-class ConstraintEvaluator {
-
-    fun evaluate(
-        schedule: Schedule,
-        constraints: List<Constraint>
-    ): ScheduleEvaluation
-}
-```
-
-Its responsibility is:
-
-```text
-Schedule
-    +
-Constraints
-    ↓
-Evaluate all constraints
-    ↓
-Separate HARD / SOFT
-    ↓
-Aggregate penalties
-    ↓
-Produce ScheduleEvaluation
-```
-
-It must not contain constraint-specific logic.
-
----
-
-# 23. Generic Evaluation Algorithm
-
-Conceptually:
-
-```kotlin
+```kotlin id="lcqh7c"
 fun evaluate(
     schedule: Schedule,
     constraints: List<Constraint>
 ): ScheduleEvaluation {
 
-    val results = constraints.map {
-        it.evaluate(schedule)
+    val results = constraints.map { constraint ->
+        constraint.evaluate(schedule)
     }
 
-    val hardResults = results.filter {
-        it.type == ConstraintType.HARD
-    }
+    val hardResults =
+        results.filter { it.type == ConstraintType.HARD }
 
-    val softResults = results.filter {
-        it.type == ConstraintType.SOFT
-    }
+    val softResults =
+        results.filter { it.type == ConstraintType.SOFT }
 
     val hardViolationCount =
         hardResults.sumOf { it.violations.size }
@@ -891,304 +885,402 @@ fun evaluate(
 }
 ```
 
-The `ConstraintEvaluator` does not know whether a result belongs to:
-
-```text
-NoOverlap
-Availability
-PreferredTimeSlot
-or any future constraint
-```
-
-It works only with the common `Constraint` contract.
+The exact implementation may vary, but the evaluation semantics must remain equivalent.
 
 ---
 
-# 24. Violation Traceability
+# 25. Separation from Fitness
 
-All `ConstraintResult` objects must be preserved in the aggregated evaluation.
+Constraint evaluation and fitness are related but separate concepts.
 
-This provides traceability:
+The Constraint Engine produces:
 
-```text
+```text id="y7pt0x"
 ScheduleEvaluation
-        │
-        └── ConstraintResults
-                │
-                ├── NoOverlap
-                │     └── violations
-                │
-                ├── Availability
-                │     └── violations
-                │
-                └── PreferredTimeSlot
-                      └── violations
 ```
 
-The application can therefore answer:
+containing:
 
-```text
-Which constraints were violated?
+```text id="rw4746"
+feasibility
+violation counts
+HARD penalty
+SOFT penalty
+total penalty
+detailed constraint results
+```
 
-How many times?
+The Fitness Function then uses:
 
-Which entities were involved?
+```text id="hxufzk"
+ScheduleEvaluation.totalPenalty
+```
 
-How severe were the violations?
+as the scalar value optimized by the Genetic Algorithm.
 
-How much penalty did they contribute?
+Therefore:
+
+```text id="eewd1r"
+ConstraintEvaluator
+      ↓
+explains Schedule quality
+
+Fitness Function
+      ↓
+provides optimization value
 ```
 
 ---
 
-# 25. User-Facing Violation Information
+# 26. Explainability
 
-The evaluation model supports the Results screen defined in the user journey.
+The evaluation must preserve individual `ConstraintResult` objects.
 
 For example:
 
-```text
-Solution Quality
+```text id="26vq0g"
+Total penalty: 3050
 
-Hard violations: 2
-Soft violations: 3
+HARD:
+- NoOverlap:       2000
+- Availability:    1000
+
+SOFT:
+- PreferredTime:     40
+- MaxConsecutive:     10
 ```
 
-Detailed information may show:
+This information can later be shown in the results interface.
 
-```text
-Hard Constraints
+It also allows experimental analysis such as:
 
-✕ No Overlap
-  Teacher Ana has two overlapping classes.
-
-✕ Availability
-  Teacher Pedro is assigned outside his availability.
-
-Soft Constraints
-
-! Preferred Time Slot
-  Teacher Laura received an afternoon class.
-```
-
-The UI therefore does not need to reconstruct constraint failures from a numeric fitness value.
-
-The necessary information is already provided by `ConstraintResult`.
+* Most frequently violated constraints.
+* HARD vs SOFT penalty distribution.
+* Comparison between algorithm configurations.
+* Evolution of schedule quality.
 
 ---
 
-# 26. Relationship with Fitness
+# 27. Domain Independence
 
-Constraint evaluation and fitness calculation are separate responsibilities.
+The evaluation mechanism does not know whether a Resource is:
 
-```text
+```text id="w5pa89"
+Teacher
+Employee
+Student group
+Machine
+```
+
+or whether an Activity represents:
+
+```text id="m8jwil"
+Lesson
+Work assignment
+Exam
+Meeting
+```
+
+It only evaluates generic:
+
+```text id="hrmsj3"
+Schedule
+Assignment
+Resource
+Activity
+TimeSlot
+Location
+Constraint
+```
+
+Therefore the same evaluation mechanism supports Academic Scheduling and Work Shift Scheduling.
+
+---
+
+# 28. Error Conditions
+
+Constraint evaluation should reject invalid configurations such as:
+
+```text id="w3sh1h"
+weight < 0
+```
+
+and, for active constraints:
+
+```text id="pe89jt"
+weight = 0
+```
+
+It should also reject:
+
+```text id="3qj4hz"
+rawPenalty < 0
+weightedPenalty < 0
+```
+
+because Genetic Planner defines penalties as non-negative values.
+
+Therefore:
+
+```text id="2pp6nt"
+rawPenalty >= 0
+weight > 0
+weightedPenalty >= 0
+```
+
+---
+
+# 29. Relationship with Chromosome Representation
+
+A chromosome may be structurally valid while producing constraint violations.
+
+Example:
+
+```text id="dd2gpq"
+Activity A
+→ Monday 09:00
+→ Ana
+
+Activity B
+→ Monday 09:00
+→ Ana
+```
+
+Both Assignment Options may be structurally valid.
+
+After decoding:
+
+```text id="76okbt"
+Schedule
+    ↓
+NoOverlapConstraint
+    ↓
+violation
+    ↓
+penalty
+```
+
+Therefore:
+
+> Structural validity belongs to encoding, while planning validity belongs to constraint evaluation.
+
+---
+
+# 30. Relationship with the Fitness Function
+
+The evaluation output connects directly with the fitness design:
+
+```text id="dd00zz"
 Schedule
     ↓
 ConstraintEvaluator
     ↓
 ScheduleEvaluation
     ↓
-Fitness Function
+totalPenalty
     ↓
-Fitness value
+Fitness
 ```
 
-This task defines:
+For example:
 
-```text
-Schedule
-    ↓
-penalties
+```text id="51yzpz"
+hardPenalty = 3000
+softPenalty = 50
 ```
 
-The later fitness design defines:
+therefore:
 
-```text
-penalties
-    ↓
-Genetic Algorithm fitness value
+```text id="s4ttst"
+Fitness =
+3000 + 50
+=
+3050
 ```
 
-This separation prevents the constraint implementations from depending directly on Jenetics or the Genetic Algorithm.
+The Genetic Algorithm minimizes this value.
 
 ---
 
-# 27. Evaluation Architecture
+# 31. Design Decisions
 
-The resulting architecture is:
+## CE1 — All constraints use the same weighting formula
 
-```text
-PlanningProblem
-      │
-      ├── Constraints
-      │
-      ▼
-   Schedule
-      │
-      ▼
-ConstraintEvaluator
-      │
-      ├── HARD results
-      │       ├── violations
-      │       └── penalties
-      │
-      └── SOFT results
-              ├── violations
-              └── penalties
-      │
-      ▼
-ScheduleEvaluation
-      │
-      ├── feasible
-      ├── hardViolationCount
-      ├── softViolationCount
-      ├── hardPenalty
-      ├── softPenalty
-      ├── totalPenalty
-      └── constraintResults
-```
-
----
-
-# 28. Design Decisions
-
-## E1 — Constraints calculate raw severity
-
-Each concrete constraint determines how strongly it is violated.
-
-This produces the `rawPenalty`.
-
----
-
-## E2 — Weights represent relative importance
-
-The generic weighting rule is:
-
-```text
+```text id="jx1gql"
+weightedPenalty =
 rawPenalty × weight
 ```
 
----
+No separate global HARD multiplier is required.
 
-## E3 — HARD constraints receive additional optimization pressure
+## CE2 — Constraint type and weight have different meanings
 
-HARD penalties use:
+```text id="9shtqg"
+ConstraintType
+→ determines semantics and feasibility
 
-```text
-rawPenalty × weight × HARD_PENALTY_FACTOR
+Weight
+→ determines optimization impact
 ```
 
-with a large configurable global factor.
+## CE3 — HARD constraints determine feasibility
 
----
-
-## E4 — HARD violations explicitly determine feasibility
-
-A schedule is feasible only when:
-
-```text
-hardViolationCount == 0
+```text id="93yyzw"
+hardViolationCount > 0
+→ feasible = false
 ```
 
-This rule does not depend on penalty magnitude.
+## CE4 — SOFT constraints do not determine feasibility
 
----
+SOFT violations only reduce Schedule quality.
 
-## E5 — HARD and SOFT penalties remain separate
+## CE5 — HARD constraints normally use large weights
 
-The model stores:
+Typical MVP value:
 
-```text
+```text id="i4tawq"
+1000
+```
+
+## CE6 — SOFT constraints use smaller configurable weights
+
+Typical values may include:
+
+```text id="0nt9om"
+5
+10
+20
+```
+
+## CE7 — HARD and SOFT penalties are aggregated separately
+
+```text id="o7y9i6"
 hardPenalty
 softPenalty
 ```
 
-rather than only one global value.
+remain available independently.
 
----
+## CE8 — Total penalty combines both groups
 
-## E6 — Aggregation remains generic
-
-`ConstraintEvaluator` evaluates `Constraint` implementations without knowing their concrete classes.
-
----
-
-## E7 — Violations remain identifiable
-
-Individual `ConstraintViolation` objects are preserved after aggregation.
-
-This supports debugging, experiments, documentation, and user-facing explanations.
-
----
-
-## E8 — Evaluation remains independent from Jenetics
-
-The constraint system produces a generic `ScheduleEvaluation`.
-
-The Genetic Algorithm fitness layer later translates that evaluation into the numeric representation required by Jenetics.
-
----
-
-# 29. Scope Boundary
-
-This document defines:
-
-* HARD penalty strategy.
-* SOFT penalty strategy.
-* Weighting system.
-* Aggregated evaluation result.
-* Feasibility semantics.
-* Violation traceability.
-
-It intentionally does not define:
-
-* Final numeric fitness representation.
-* Whether Jenetics minimizes or maximizes the resulting fitness value.
-* Fitness normalization.
-* Selection strategy.
-* Genetic operators.
-* Population size.
-* Termination conditions.
-
-Those decisions belong to:
-
-```text
-Design fitness function
-Define genetic algorithm configuration
-Research and validate Jenetics
+```text id="tixh4s"
+totalPenalty =
+hardPenalty + softPenalty
 ```
 
----
+## CE9 — Penalties are non-negative
 
-# 30. Summary
-
-Constraint evaluation follows the model:
-
-```text
-                        Schedule
-                           │
-                           ▼
-                    Constraints
-                           │
-             ┌─────────────┴─────────────┐
-             │                           │
-            HARD                        SOFT
-             │                           │
-             ▼                           ▼
- rawPenalty × weight × factor    rawPenalty × weight
-             │                           │
-             └─────────────┬─────────────┘
-                           ▼
-                   ScheduleEvaluation
-                           │
-             ┌─────────────┼─────────────┐
-             │             │             │
-        Feasibility   Penalties     Violations
-                           │
-                           ▼
-                  Future Fitness Function
+```text id="uq0c1m"
+rawPenalty >= 0
+weightedPenalty >= 0
 ```
 
-The central rule is:
+## CE10 — Detailed results are preserved
 
-> **HARD constraints determine feasibility; SOFT constraints determine preference quality. Both influence optimization, but they remain explicitly separated throughout evaluation.**
+Evaluation must retain each `ConstraintResult` for explainability and analysis.
+
+## CE11 — Evaluation remains domain-independent
+
+The same mechanism applies to every planning template.
+
+## CE12 — Fitness calculation is a separate responsibility
+
+Constraint evaluation produces `ScheduleEvaluation`.
+
+The Fitness Function uses that result for Genetic Algorithm optimization.
+
+---
+
+# 32. Summary
+
+Constraint evaluation follows:
+
+```text id="xvjncf"
+Constraint
+    ↓
+detect violations
+    ↓
+rawPenalty
+    ↓
+× weight
+    ↓
+weightedPenalty
+```
+
+Results are separated by type:
+
+```text id="r17nfa"
+HARD
+    ↓
+hardPenalty
+    +
+determines feasibility
+
+SOFT
+    ↓
+softPenalty
+    +
+affects schedule quality
+```
+
+The final aggregation is:
+
+```text id="9thuc7"
+hardPenalty =
+Σ HARD weighted penalties
+
+softPenalty =
+Σ SOFT weighted penalties
+
+totalPenalty =
+hardPenalty + softPenalty
+```
+
+and:
+
+```text id="gk28x9"
+feasible =
+hardViolationCount == 0
+```
+
+Example:
+
+```text id="2p0rmv"
+HARD:
+  overlap             2 × 1000 = 2000
+  unavailable         1 × 1000 = 1000
+
+SOFT:
+  preference          4 × 10   =   40
+  consecutive         2 × 5    =   10
+
+hardPenalty = 3000
+softPenalty = 50
+totalPenalty = 3050
+
+feasible = false
+```
+
+The resulting architecture is:
+
+```text id="ykrwkp"
+Schedule
+    ↓
+ConstraintEvaluator
+    ↓
+ConstraintResult[]
+    ↓
+ScheduleEvaluation
+    │
+    ├── feasible
+    ├── hardViolationCount
+    ├── softViolationCount
+    ├── hardPenalty
+    ├── softPenalty
+    ├── totalPenalty
+    └── detailed results
+             ↓
+        Fitness Function
+```
+
+This design provides a simple, explainable and reusable constraint evaluation model for Genetic Planner.
