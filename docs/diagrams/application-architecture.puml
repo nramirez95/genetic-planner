@@ -1,0 +1,88 @@
+@startuml
+title Genetic Planner - Application Architecture
+
+skinparam shadowing false
+skinparam roundcorner 10
+skinparam componentStyle rectangle
+
+package "Frontend" {
+    component "React + TypeScript" as React
+}
+
+package "Backend - Spring Boot" {
+
+    component "REST API\nControllers" as API
+
+    component "Application Services" as Application
+
+    package "Planning Templates" {
+        component "Academic Template" as Academic
+        component "Work Shift Template" as WorkShift
+    }
+
+    package "Planning Domain" {
+        component "PlanningProblem" as PlanningProblem
+        component "Constraints" as Constraints
+        component "Schedule" as Schedule
+    }
+
+    package "Genetic Engine" {
+        component "GeneticEngine" as GeneticEngine
+        component "Encoding / Decoding" as Encoding
+        component "Constraint Evaluation" as Evaluation
+        component "Fitness" as Fitness
+        component "Jenetics Adapter" as Jenetics
+    }
+
+    component "Repository Interfaces" as Repositories
+
+    package "Infrastructure" {
+        component "Persistence Adapters\nSpring Data / JPA" as Persistence
+    }
+}
+
+database "PostgreSQL" as PostgreSQL
+
+React --> API : REST / JSON
+API --> Application
+
+Application --> Academic
+Application --> WorkShift
+
+Academic --> PlanningProblem : build()
+WorkShift --> PlanningProblem : build()
+
+Application --> PlanningProblem
+Application --> GeneticEngine
+Application --> Repositories
+
+GeneticEngine --> PlanningProblem
+GeneticEngine --> Encoding
+GeneticEngine --> Evaluation
+Evaluation --> Constraints
+Evaluation --> Fitness
+GeneticEngine --> Jenetics
+GeneticEngine --> Schedule
+
+Persistence ..|> Repositories : implements
+Persistence --> PostgreSQL
+
+note right of GeneticEngine
+The Genetic Engine:
+
+- uses only generic planning concepts
+- contains no Academic/Work Shift logic
+- does not access PostgreSQL
+- does not depend on REST or React
+end note
+
+note bottom of Application
+Application Services orchestrate:
+
+PlanningProblem
+Templates
+Genetic Engine
+Persistence
+end note
+
+@enduml
