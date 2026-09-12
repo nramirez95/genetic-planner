@@ -1,0 +1,59 @@
+@startuml
+title Planning Template Architecture
+
+skinparam shadowing false
+skinparam roundcorner 10
+
+rectangle "Genetic Planner" as App
+
+rectangle "Academic Template" as Academic {
+    rectangle "Teachers"
+    rectangle "Student Groups"
+    rectangle "Classes"
+    rectangle "Classrooms"
+    rectangle "Teaching Periods"
+}
+
+rectangle "Work Shift Template" as Work {
+    rectangle "Employees"
+    rectangle "Work Assignments"
+    rectangle "Workplaces"
+    rectangle "Shift Periods"
+}
+
+rectangle "PlanningProblem" as Problem {
+    rectangle "Resources"
+    rectangle "Activities"
+    rectangle "TimeSlots"
+    rectangle "Locations"
+    rectangle "Constraints"
+}
+
+rectangle "ProblemValidator" as Validator
+rectangle "Genetic Engine" as Engine
+rectangle "Schedule" as Schedule
+
+App --> Academic
+App --> Work
+
+Academic --> Problem : build()
+Work --> Problem : build()
+
+Problem --> Validator
+Validator --> Engine
+Engine --> Schedule
+
+note right of Engine
+The Genetic Engine knows only
+the generic PlanningProblem.
+
+It does not depend on:
+- Academic Template
+- Work Shift Template
+- Teacher
+- Employee
+- Subject
+- Shift
+end note
+
+@enduml
