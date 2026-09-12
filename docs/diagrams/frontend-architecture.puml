@@ -1,0 +1,66 @@
+@startuml
+title Genetic Planner - Frontend Architecture
+
+skinparam shadowing false
+skinparam roundcorner 10
+skinparam componentStyle rectangle
+
+package "React + TypeScript + Vite" {
+
+    component "Pages" as Pages
+    component "Feature Components" as Features
+
+    component "Material UI" as MUI
+    component "FullCalendar" as Calendar
+
+    component "React Hook Form" as Forms
+    component "Zod" as Zod
+
+    component "React State / Context" as State
+
+    component "TanStack Query" as Query
+
+    package "API Layer" {
+        component "API Modules" as API
+        component "Axios Client" as Axios
+    }
+}
+
+component "Spring Boot REST API" as Backend
+
+Pages --> Features
+
+Features --> MUI
+Features --> Calendar
+Features --> Forms
+Features --> State
+Features --> Query
+
+Forms --> Zod
+
+Query --> API
+API --> Axios
+Axios --> Backend : REST / JSON
+
+note right of Query
+Server state:
+- Planning problems
+- Templates
+- Schedules
+- Generation results
+end note
+
+note right of State
+Local state:
+- Wizard step
+- Dialogs
+- Filters
+- UI selections
+end note
+
+note bottom of Calendar
+Schedule visualization only.
+No planning or optimization logic.
+end note
+
+@enduml
