@@ -1,0 +1,46 @@
+@startuml
+title Genetic Algorithm Configuration
+
+skinparam shadowing false
+skinparam roundcorner 10
+
+rectangle "Genetic Algorithm Parameters" as Parameters {
+    rectangle "Population Size"
+    rectangle "Generation Limit"
+    rectangle "Mutation Probability"
+    rectangle "Crossover Probability"
+    rectangle "Elite Count"
+}
+
+rectangle "Optimization Presets" as Presets {
+    rectangle "FAST\n\nPopulation: 50\nGenerations: 100\nMutation: 0.10\nCrossover: 0.70\nElite: 2" as Fast
+
+    rectangle "BALANCED\n\nPopulation: 100\nGenerations: 300\nMutation: 0.15\nCrossover: 0.80\nElite: 5" as Balanced
+
+    rectangle "EXHAUSTIVE\n\nPopulation: 250\nGenerations: 1000\nMutation: 0.20\nCrossover: 0.85\nElite: 10" as Exhaustive
+}
+
+rectangle "GeneticAlgorithmConfig" as Config
+rectangle "Genetic Engine" as Engine
+rectangle "Jenetics" as Jenetics
+rectangle "Evolution" as Evolution
+rectangle "Best Schedule" as Schedule
+
+Parameters --> Config : custom configuration
+
+Fast --> Config
+Balanced --> Config
+Exhaustive --> Config
+
+Config --> Engine
+Engine --> Jenetics
+Jenetics --> Evolution
+Evolution --> Schedule
+
+note bottom of Presets
+Initial values only.
+Presets will be validated and tuned
+through experimental evaluation.
+end note
+
+@enduml
