@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/genetic_planner}
+    username: ${DATABASE_USER:genetic_planner}
+    password: ${DATABASE_PASSWORD:genetic_planner}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none

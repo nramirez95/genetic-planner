@@ -1,8 +1,63 @@
-# Ignore Gradle project-specific cache directory
-.gradle
+# ==============================
+# Gradle
+# ==============================
+.gradle/
+**/build/
 
-# Ignore Gradle build output directory
-build
+# ==============================
+# IntelliJ IDEA
+# ==============================
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
 
-# Ignore Kotlin plugin data
-.kotlin
+# ==============================
+# Kotlin
+# ==============================
+.kotlin/
+
+# ==============================
+# Java
+# ==============================
+*.class
+*.jar
+*.war
+
+# Gradle Wrapper must be versioned
+!gradle/wrapper/gradle-wrapper.jar
+
+# ==============================
+# Frontend / Node.js
+# ==============================
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ==============================
+# Environment variables / secrets
+# ==============================
+.env
+.env.*
+!.env.example
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+
+# ==============================
+# Operating systems
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Temporary files
+# ==============================
+*.tmp
+*.temp
+*.swp
+*~

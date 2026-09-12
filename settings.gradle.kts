@@ -11,4 +11,4 @@ plugins {
 }
 
 rootProject.name = "genetic-planner"
-include("app")
+include("app", "backend")

@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: genetic-planner-postgres
+
+    environment:
+      POSTGRES_DB: genetic_planner
+      POSTGRES_USER: genetic_planner
+      POSTGRES_PASSWORD: genetic_planner
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - genetic-planner-postgres-data:/var/lib/postgresql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genetic_planner -d genetic_planner"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  genetic-planner-postgres-data:
