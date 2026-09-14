@@ -501,9 +501,9 @@ Tuesday Morning Reception
 
 ## 8.3 Activity Occurrences
 
-An important MVP design decision is:
-
 > Repeated activities are represented as separate schedulable Activity instances.
+
+The genetic engine operates on atomic scheduling decisions. Representing each occurrence as an independent Activity preserves a one-to-one correspondence between activities and genetic decisions, keeping genotype encoding, candidate generation, mutation, crossover and constraint evaluation simple and generic. Recurrence remains a template-level concept: templates may expand a user-defined recurring activity into multiple schedulable activities. If relationships between those occurrences are required, they can be represented through grouping metadata and dedicated constraints without introducing recurrence semantics into the genetic core.
 
 For example, if Mathematics 1A must occur three times per week:
 
@@ -1661,30 +1661,7 @@ This code remains conceptual until the constraint and genetic representation des
 
 ---
 
-# 25. Acceptance Criteria
-
-The generic domain model is considered complete when:
-
-* [x] `PlanningProblem` is defined.
-* [x] `PlanningHorizon` is defined.
-* [x] `ResourceType` is defined.
-* [x] `Resource` is defined.
-* [x] `Activity` is defined.
-* [x] `ResourceRequirement` is defined.
-* [x] `TimeSlot` is defined.
-* [x] `Location` is defined.
-* [x] `Assignment` is defined.
-* [x] `Schedule` is defined.
-* [x] Entity relationships are documented.
-* [x] Structural invariants are documented.
-* [x] Academic Scheduling can be represented using the generic model.
-* [x] Work Shift Scheduling can be represented using the same model.
-* [x] No domain-specific concept is required by the Genetic Engine.
-* [x] The model maintains separation from persistence and UI concerns.
-
----
-
-# 26. Future Extensions
+# 25. Future Extensions
 
 The following concepts are intentionally excluded from the MVP domain but may be introduced later:
 
@@ -1706,7 +1683,7 @@ These extensions should only be introduced if they provide sufficient value to j
 
 ---
 
-## 27. Domain UML Overview
+## 26. Domain UML Overview
 
 The domain UML diagram provides a simplified visual representation of the main concepts used by Genetic Planner and the relationships between them.
 

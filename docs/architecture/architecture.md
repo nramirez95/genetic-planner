@@ -1198,8 +1198,6 @@ backend/
 
 This is a logical proposal.
 
-Exact package names may be adjusted during #20.
-
 ---
 
 # 33. Frontend Logical Structure
@@ -1220,8 +1218,6 @@ frontend/
     ├── types/
     └── utils/
 ```
-
-Detailed component strategy belongs to task #23.
 
 ---
 

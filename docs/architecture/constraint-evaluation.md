@@ -42,9 +42,7 @@ ScheduleEvaluation
 Fitness Function
 ```
 
-The Constraint Engine does not depend on Jenetics.
-
-It evaluates domain objects only.
+The Constraint Engine does not depend on Jenetics. It evaluates domain objects only.
 
 ---
 
@@ -992,8 +990,6 @@ TimeSlot
 Location
 Constraint
 ```
-
-Therefore the same evaluation mechanism supports Academic Scheduling and Work Shift Scheduling.
 
 ---
 

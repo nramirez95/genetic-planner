@@ -748,11 +748,3 @@ It does **not** define:
 * Exact penalty values for each constraint.
 * Global weighting formulas.
 * The final fitness function.
-
-These aspects are addressed separately in:
-
-```text
-Define initial constraint catalogue
-Design constraint evaluation and weighting
-Design fitness function
-```

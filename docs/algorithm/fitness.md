@@ -747,8 +747,6 @@ Jenetics
 minimizes fitness
 ```
 
-Therefore Jenetics does not contain planning-domain logic.
-
 ---
 
 # 20. Genetic Engine Integration
@@ -967,5 +965,3 @@ Fitness
     ↓
 MINIMIZE
 ```
-
-This design provides a simple, explainable and domain-independent fitness function suitable for the Genetic Planner MVP.

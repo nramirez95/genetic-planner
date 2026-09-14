@@ -890,5 +890,3 @@ EXHAUSTIVE ──┘              │
 ```
 
 These values provide an initial configuration for Genetic Planner 1.0.
-
-They are deliberately non-final and will be validated and tuned through experimental evaluation.
