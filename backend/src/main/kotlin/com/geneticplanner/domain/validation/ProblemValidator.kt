@@ -164,6 +164,22 @@ class ProblemValidator {
                     )
                 }
 
+                if (
+                    requirement.candidateResourceIds != null &&
+                    requirement.candidateResourceIds.size < requirement.quantity
+                ) {
+                    errors += ValidationError(
+                        code = ValidationErrorCode.INSUFFICIENT_CANDIDATE_RESOURCES,
+                        message =
+                            "Resource requirement '${requirement.id}' requires " +
+                                    "${requirement.quantity} distinct resource(s), but only " +
+                                    "${requirement.candidateResourceIds.size} candidate(s) are available.",
+                        entityType = "ResourceRequirement",
+                        entityId = requirement.id,
+                        field = "candidateResourceIds"
+                    )
+                }
+
                 if (requirement.resourceTypeId !in resourceTypesById) {
                     errors += ValidationError(
                         code = ValidationErrorCode.UNKNOWN_RESOURCE_TYPE,

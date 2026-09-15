@@ -123,6 +123,36 @@ class ProblemValidatorTest {
     }
 
     @Test
+    fun `insufficient candidate resources are detected`() {
+        val original = validProblem()
+        val activity = original.activities.first()
+
+        val requirement = activity.resourceRequirements.first().copy(
+            quantity = 2,
+            candidateResourceIds = setOf("teacher-1")
+        )
+
+        val problem = original.copy(
+            activities = listOf(
+                activity.copy(
+                    resourceRequirements = listOf(requirement)
+                )
+            )
+        )
+
+        val result = validator.validate(problem)
+
+        assertFalse(result.isValid)
+        assertTrue(
+            result.errors.any {
+                it.code ==
+                        ValidationErrorCode.INSUFFICIENT_CANDIDATE_RESOURCES &&
+                        it.entityId == "teacher-requirement"
+            }
+        )
+    }
+
+    @Test
     fun `resource requirement with unknown resource type is detected`() {
         val original = validProblem()
         val activity = original.activities.first()
