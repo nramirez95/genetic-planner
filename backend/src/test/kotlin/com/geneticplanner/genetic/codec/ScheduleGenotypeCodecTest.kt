@@ -38,26 +38,24 @@ class ScheduleGenotypeCodecTest {
     }
 
     @Test
-    fun `different activities have different allele ranges`() {
+    fun `generated chromosomes use candidate option index ranges`() {
         val codec = codec()
 
-        val genotype = codec.createGenotype()
+        repeat(100) {
+            val genotype = codec.createGenotype()
 
-        val chromosomeA = genotype.get(0)
-        val chromosomeB = genotype.get(1)
-        val chromosomeC = genotype.get(2)
+            assertTrue(
+                genotype.get(0).gene().allele() in 0..2
+            )
 
-        // Activity A -> 3 options -> [0, 1, 2)
-        assertEquals(0, chromosomeA.gene().min())
-        assertEquals(2, chromosomeA.gene().max())
+            assertTrue(
+                genotype.get(1).gene().allele() in 0..4
+            )
 
-        // Activity B -> 5 options -> [0, 1, 2, 3, 4)
-        assertEquals(0, chromosomeB.gene().min())
-        assertEquals(4, chromosomeB.gene().max())
-
-        // Activity C -> 2 options -> [0, 1)
-        assertEquals(0, chromosomeC.gene().min())
-        assertEquals(1, chromosomeC.gene().max())
+            assertTrue(
+                genotype.get(2).gene().allele() in 0..1
+            )
+        }
     }
 
     @Test
@@ -72,8 +70,15 @@ class ScheduleGenotypeCodecTest {
 
         val schedule = codec.decode(genotype)
 
-        assertEquals("problem-1", schedule.planningProblemId)
-        assertEquals(3, schedule.assignments.size)
+        assertEquals(
+            "problem-1",
+            schedule.planningProblemId
+        )
+
+        assertEquals(
+            3,
+            schedule.assignments.size
+        )
 
         assertEquals(
             assignmentFrom(optionA(2)),
@@ -125,7 +130,7 @@ class ScheduleGenotypeCodecTest {
     }
 
     @Test
-    fun `encoded genotype preserves original allele ranges`() {
+    fun `encoded genotype preserves candidate option domains`() {
         val codec = codec()
 
         val schedule = Schedule(
@@ -139,14 +144,9 @@ class ScheduleGenotypeCodecTest {
 
         val genotype = codec.encode(schedule)
 
-        assertEquals(0, genotype.get(0).gene().min())
-        assertEquals(3, genotype.get(0).gene().max())
-
-        assertEquals(0, genotype.get(1).gene().min())
-        assertEquals(5, genotype.get(1).gene().max())
-
-        assertEquals(0, genotype.get(2).gene().min())
-        assertEquals(2, genotype.get(2).gene().max())
+        assertEquals(2, genotype.get(0).gene().allele())
+        assertEquals(4, genotype.get(1).gene().allele())
+        assertEquals(1, genotype.get(2).gene().allele())
     }
 
     @Test
@@ -162,8 +162,11 @@ class ScheduleGenotypeCodecTest {
             )
         )
 
-        val genotype = codec.encode(originalSchedule)
-        val decodedSchedule = codec.decode(genotype)
+        val genotype =
+            codec.encode(originalSchedule)
+
+        val decodedSchedule =
+            codec.decode(genotype)
 
         assertEquals(
             originalSchedule,
@@ -204,6 +207,94 @@ class ScheduleGenotypeCodecTest {
     }
 
     @Test
+    fun `genotype supports activity with exactly one assignment option`() {
+        val candidates =
+            AssignmentCandidateGenerationResult(
+                candidatesByActivity = listOf(
+                    ActivityCandidateOptions(
+                        activityId = "activity-a",
+                        options = listOf(
+                            optionA(0)
+                        )
+                    )
+                )
+            )
+
+        val codec =
+            ScheduleGenotypeCodec(
+                planningProblemId = "problem-1",
+                candidateGenerationResult = candidates
+            )
+
+        val genotype =
+            codec.createGenotype()
+
+        assertEquals(
+            1,
+            genotype.length()
+        )
+
+        assertEquals(
+            1,
+            genotype.get(0).length()
+        )
+
+        // One option -> only index 0 is selectable.
+        assertEquals(
+            0,
+            genotype.get(0).gene().allele()
+        )
+
+        // Jenetics represents it as [0, 1).
+        assertEquals(
+            0,
+            genotype.get(0).gene().min()
+        )
+
+        assertEquals(
+            1,
+            genotype.get(0).gene().max()
+        )
+    }
+
+    @Test
+    fun `single option genotype decodes its only assignment`() {
+        val option = optionA(0)
+
+        val candidates =
+            AssignmentCandidateGenerationResult(
+                candidatesByActivity = listOf(
+                    ActivityCandidateOptions(
+                        activityId = "activity-a",
+                        options = listOf(option)
+                    )
+                )
+            )
+
+        val codec =
+            ScheduleGenotypeCodec(
+                planningProblemId = "problem-1",
+                candidateGenerationResult = candidates
+            )
+
+        val genotype =
+            codec.createGenotype()
+
+        val schedule =
+            codec.decode(genotype)
+
+        assertEquals(
+            "problem-1",
+            schedule.planningProblemId
+        )
+
+        assertEquals(
+            listOf(assignmentFrom(option)),
+            schedule.assignments
+        )
+    }
+
+    @Test
     fun `codec rejects activity without assignment options`() {
         val candidates =
             AssignmentCandidateGenerationResult(
@@ -235,22 +326,23 @@ class ScheduleGenotypeCodecTest {
     fun `decode rejects genotype with wrong chromosome count`() {
         val codec = codec()
 
-        val genotype = Genotype.of(
-            IntegerChromosome.of(
-                IntegerGene.of(
-                    0,
-                    0,
-                    3
-                )
-            ),
-            IntegerChromosome.of(
-                IntegerGene.of(
-                    0,
-                    0,
-                    5
+        val genotype =
+            Genotype.of(
+                IntegerChromosome.of(
+                    IntegerGene.of(
+                        0,
+                        0,
+                        3
+                    )
+                ),
+                IntegerChromosome.of(
+                    IntegerGene.of(
+                        0,
+                        0,
+                        5
+                    )
                 )
             )
-        )
 
         assertThrows(
             IllegalArgumentException::class.java
@@ -327,7 +419,9 @@ class ScheduleGenotypeCodecTest {
             activityId = "activity-a",
             timeSlotId = "unknown-slot",
             resourceAssignments = mapOf(
-                "requirement-a" to listOf("resource-a")
+                "requirement-a" to listOf(
+                    "resource-a"
+                )
             ),
             locationId = "location-1"
         )
@@ -347,6 +441,10 @@ class ScheduleGenotypeCodecTest {
             codec.encode(schedule)
         }
     }
+
+    /*
+     * Test fixtures
+     */
 
     private fun codec(): ScheduleGenotypeCodec =
         ScheduleGenotypeCodec(

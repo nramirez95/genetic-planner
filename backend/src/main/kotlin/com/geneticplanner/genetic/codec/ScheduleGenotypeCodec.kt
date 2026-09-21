@@ -28,13 +28,28 @@ class ScheduleGenotypeCodec(
     }
 
     fun createGenotype(): Genotype<IntegerGene> {
-        val chromosomes = candidatesByActivity.map { activityCandidates ->
-            IntegerChromosome.of(
-                0,
-                activityCandidates.options.lastIndex,
-                1
-            )
-        }
+        val chromosomes =
+            candidatesByActivity.map { activityCandidates ->
+
+                val optionCount =
+                    activityCandidates.options.size
+
+                if (optionCount == 1) {
+                    IntegerChromosome.of(
+                        IntegerGene.of(
+                            0,
+                            0,
+                            1
+                        )
+                    )
+                } else {
+                    IntegerChromosome.of(
+                        0,
+                        optionCount - 1,
+                        1
+                    )
+                }
+            }
 
         return Genotype.of(chromosomes)
     }
