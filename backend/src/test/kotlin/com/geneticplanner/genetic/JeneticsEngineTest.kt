@@ -237,6 +237,75 @@ class JeneticsEngineTest {
         )
     }
 
+    @Test
+    fun `optimization result exposes fitness and penalty breakdown`() {
+        val problem =
+            createUnavoidableSoftViolationProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        assertEquals(
+            result.hardPenalty + result.softPenalty,
+            result.fitness
+        )
+
+        assertEquals(
+            result.evaluation.hardPenalty,
+            result.hardPenalty
+        )
+
+        assertEquals(
+            result.evaluation.softPenalty,
+            result.softPenalty
+        )
+    }
+
+    @Test
+    fun `optimization result exposes constraint results`() {
+        val problem =
+            createUnavoidableSoftViolationProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        assertEquals(
+            problem.constraints.size,
+            result.constraintResults.size
+        )
+
+        assertEquals(
+            "preferred-time",
+            result.constraintResults.single().constraintId
+        )
+
+        assertTrue(
+            result.constraintResults.single().violations > 0
+        )
+    }
+
+    @Test
+    fun `optimization result includes execution time`() {
+        val problem =
+            createProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        assertFalse(
+            result.executionTime.isNegative
+        )
+    }
+
     /*
      * Generic problem with two activities and two possible time slots.
      */

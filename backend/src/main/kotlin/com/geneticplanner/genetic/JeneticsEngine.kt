@@ -5,9 +5,15 @@ import com.geneticplanner.domain.candidate.AssignmentCandidateGenerator
 import com.geneticplanner.domain.evaluation.ConstraintEvaluator
 import com.geneticplanner.genetic.codec.ScheduleGenotypeCodec
 import com.geneticplanner.genetic.config.GeneticAlgorithmConfig
-import io.jenetics.*
+import io.jenetics.EliteSelector
+import io.jenetics.IntegerGene
+import io.jenetics.Mutator
+import io.jenetics.Optimize
+import io.jenetics.SinglePointCrossover
+import io.jenetics.TournamentSelector
 import io.jenetics.engine.Engine
 import io.jenetics.engine.Limits
+import java.time.Duration
 
 class JeneticsEngine(
     private val candidateGenerator: AssignmentCandidateGenerator =
@@ -18,6 +24,9 @@ class JeneticsEngine(
         problem: PlanningProblem,
         config: GeneticAlgorithmConfig
     ): OptimizationResult {
+
+        val startTime =
+            System.nanoTime()
 
         /*
          * 1. Generate all structurally valid assignment options.
@@ -35,13 +44,14 @@ class JeneticsEngine(
          * 2. Create the adapter between the planning domain
          * and the Jenetics genotype.
          */
-        val codec = ScheduleGenotypeCodec(
-            planningProblemId = problem.id,
-            candidateGenerationResult = candidateResult
-        )
+        val codec =
+            ScheduleGenotypeCodec(
+                planningProblemId = problem.id,
+                candidateGenerationResult = candidateResult
+            )
 
         /*
-         * 3. Create the evaluator used by the fitness function.
+         * 3. Create the constraint evaluator used as fitness function.
          */
         val constraintEvaluator =
             ConstraintEvaluator(
@@ -49,13 +59,7 @@ class JeneticsEngine(
             )
 
         /*
-         * 4. Build the Jenetics engine.
-         *
-         * Fitness represents the total constraint penalty,
-         * therefore lower values represent better schedules.
-         *
-         * Exactly eliteCount individuals survive unchanged.
-         * The remaining population is generated as offspring.
+         * 4. Build the genetic engine.
          */
         val engine =
             Engine.builder(
@@ -89,7 +93,7 @@ class JeneticsEngine(
                 .build()
 
         /*
-         * 5. Execute the evolutionary process.
+         * 5. Execute all configured generations.
          */
         val evolutionResults =
             engine.stream()
@@ -100,6 +104,9 @@ class JeneticsEngine(
                 )
                 .toList()
 
+        /*
+         * 6. Select the best phenotype found during the complete run.
+         */
         val bestPhenotype =
             evolutionResults
                 .map { it.bestPhenotype() }
@@ -109,30 +116,34 @@ class JeneticsEngine(
             evolutionResults.size.toLong()
 
         /*
-         * 6. Decode the best genotype into our domain model.
+         * 7. Decode and evaluate the best schedule.
          */
         val bestSchedule =
             codec.decode(
                 bestPhenotype.genotype()
             )
 
-        /*
-         * 7. Evaluate the best schedule again so the caller receives
-         * the complete penalty and constraint breakdown.
-         */
         val bestEvaluation =
             constraintEvaluator.evaluate(
                 bestSchedule
             )
 
         /*
-         * 8. Return the result without performing persistence.
+         * 8. Measure complete optimization execution time.
          */
+        val executionTime =
+            Duration.ofNanos(
+                System.nanoTime() - startTime
+            )
 
+        /*
+         * 9. Return a domain-oriented result.
+         */
         return OptimizationResult(
             schedule = bestSchedule,
             evaluation = bestEvaluation,
-            generationsExecuted = generationsExecuted
+            generationsExecuted = generationsExecuted,
+            executionTime = executionTime
         )
     }
 
