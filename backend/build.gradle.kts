@@ -38,6 +38,9 @@ dependencies {
     // Health / diagnostics
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
+    // Jenetics
+    implementation("io.jenetics:jenetics:9.1.0")
+
     // Tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
