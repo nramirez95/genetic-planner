@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/genetic_planner_test
+    username: genetic_planner
+    password: genetic_planner
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate

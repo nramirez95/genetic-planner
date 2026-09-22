@@ -11,7 +11,7 @@ class MaxConsecutiveConstraint(
     override val id: String,
     override val name: String,
     override val weight: Double,
-    private val maxConsecutive: Int,
+    val maxConsecutive: Int,
     timeSlots: List<TimeSlot>
 ) : Constraint {
 

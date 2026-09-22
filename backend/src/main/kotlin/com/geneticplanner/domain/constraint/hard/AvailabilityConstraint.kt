@@ -10,7 +10,7 @@ class AvailabilityConstraint(
     override val id: String,
     override val name: String,
     override val weight: Double,
-    private val availableTimeSlotIdsByResourceId: Map<String, Set<String>>
+    val availableTimeSlotIdsByResourceId: Map<String, Set<String>>
 ) : Constraint {
 
     override val type = ConstraintType.HARD

@@ -10,8 +10,8 @@ class BalancedWorkloadConstraint(
     override val id: String,
     override val name: String,
     override val weight: Double,
-    private val resourceIds: Set<String>,
-    private val allowedDifference: Int = 0
+    val resourceIds: Set<String>,
+    val allowedDifference: Int = 0
 ) : Constraint {
 
     override val type = ConstraintType.SOFT
