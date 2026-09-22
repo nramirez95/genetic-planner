@@ -2,29 +2,35 @@
 
 ## 1. Purpose
 
-This document defines how candidate planning solutions are represented inside the Genetic Algorithm.
+This document describes the chromosome representation implemented by
+the Genetic Planner Genetic Engine.
 
 The representation must:
 
-* Remain independent from specific planning domains.
-* Represent complete schedules.
-* Work with the generic planning model.
-* Support mutation and crossover.
-* Permit constraint violations during evolution.
-* Preserve structural validity.
-* Remain independent from Jenetics at domain level.
-* Allow deterministic conversion between genetic representation and `Schedule`.
+- Remain independent from specific planning domains.
+- Represent complete candidate schedules.
+- Support heterogeneous candidate domains.
+- Support mutation and crossover.
+- Preserve structural validity.
+- Allow planning constraint violations during evolution.
+- Keep Jenetics types outside the domain model.
+- Provide deterministic conversion between Jenetics genotypes and
+  domain schedules.
 
-The central conceptual decision is:
+The central representation decision is:
 
-> **Each genetic decision represents the assignment of exactly one Activity.**
+> Each Activity represents exactly one atomic scheduling decision.
 
 Therefore:
 
 ```text
 1 Activity
     ↓
-1 genetic decision
+1 AssignmentOption decision
+    ↓
+1 IntegerGene
+    ↓
+1 single-gene IntegerChromosome
 ```
 
 and:
@@ -32,16 +38,18 @@ and:
 ```text
 N Activities
     ↓
-N genetic decisions
+N IntegerChromosomes
     ↓
-1 candidate Schedule
+1 Genotype
+    ↓
+1 complete candidate Schedule
 ```
 
 ---
 
-# 2. Relationship with the Domain Model
+## 2. Relationship with the Domain Model
 
-The generic domain model establishes:
+The generic planning model establishes:
 
 ```text
 PlanningProblem
@@ -65,69 +73,46 @@ For the MVP:
 1 atomic schedulable unit
 ```
 
-Every complete `Schedule` contains exactly one `Assignment` for every `Activity`.
+Repeated real-world activities are represented as separate Activity
+instances.
 
-The genetic representation follows the same semantic structure:
+For example:
 
 ```text
-Activity 0 → Decision 0 → Assignment 0
-Activity 1 → Decision 1 → Assignment 1
-Activity 2 → Decision 2 → Assignment 2
-...
-Activity N → Decision N → Assignment N
+Mathematics session 1
+Mathematics session 2
+Mathematics session 3
 ```
+
+are three independent Activities and therefore three independent
+genetic decisions.
+
+This keeps recurrence and template-specific concepts outside the
+Genetic Engine.
 
 ---
 
-# 3. Gene
+## 3. AssignmentOption
 
-Conceptually, a gene represents the scheduling decision associated with one `Activity`.
+The genetic representation does not encode TimeSlot, Resource, and
+Location independently.
 
-It determines the selected:
+Instead, every Activity has a precomputed ordered collection of
+`AssignmentOption` objects.
 
-```text
-TimeSlot
-Resources
-Location
-```
-
-through an `AssignmentOption`.
-
-The Activity itself is fixed during evolution.
-
-Therefore:
-
-```text
-Activity
-    = fixed
-
-AssignmentOption
-    = evolvable
-```
-
----
-
-# 4. Assignment Option
-
-Each genetic decision selects one precomputed `AssignmentOption`.
-
-Conceptually:
+The implemented model is:
 
 ```kotlin
 data class AssignmentOption(
+    val activityId: String,
     val timeSlotId: String,
     val resourceAssignments: Map<String, List<String>>,
-    val locationId: String?
+    val locationId: String? = null
 )
 ```
 
-Each `Activity` therefore owns an ordered list of structurally valid alternatives:
-
-```text
-Activity
-    ↓
-List<AssignmentOption>
-```
+Each option therefore represents one complete structurally possible
+assignment for one Activity.
 
 Example:
 
@@ -135,837 +120,747 @@ Example:
 Activity A
 
 Option 0
-Monday 09:00 / Ana / Room 1
+→ Slot 1
+→ Resource 1
+→ Room A
 
 Option 1
-Monday 10:00 / Pedro / Room 1
+→ Slot 1
+→ Resource 2
+→ Room A
 
 Option 2
-Tuesday 09:00 / Ana / Room 2
+→ Slot 2
+→ Resource 1
+→ Room B
 ```
 
-The gene stores the selected option index:
+The genetic representation stores only the selected option index.
+
+For example:
 
 ```text
-Gene value = 2
-```
-
-meaning:
-
-```text
-Activity A
-    ↓
-AssignmentOption 2
-```
-
----
-
-# 5. TimeSlot Representation
-
-Every `AssignmentOption` contains exactly one `TimeSlot`.
-
-If the Activity defines:
-
-```text
-allowedTimeSlotIds
-```
-
-only these slots are considered structurally possible.
-
-Otherwise, all structurally compatible TimeSlots may participate in candidate generation.
-
----
-
-# 6. Resource Representation
-
-An Activity can contain multiple `ResourceRequirement` objects.
-
-Example:
-
-```text
-Mathematics 1A
-
-Teacher
-    quantity = 1
-    candidates = [Ana, Pedro]
-
-Student Group
-    quantity = 1
-    candidates = [1A]
-```
-
-An Assignment Option contains the selected resources for every requirement.
-
-Conceptually:
-
-```kotlin
-Map<ResourceRequirementId, List<ResourceId>>
-```
-
-The selected resource count must satisfy the structural requirement quantity.
-
----
-
-# 7. Fixed and Variable Resources
-
-The representation supports both fixed and variable resource decisions.
-
-Example:
-
-```text
-Teacher candidates:
-[Ana]
-```
-
-produces only Ana-compatible alternatives.
-
-By contrast:
-
-```text
-Teacher candidates:
-[Ana, Pedro, Laura]
-```
-
-allows different Assignment Options to contain different teachers.
-
-The same mechanism works with employees or any other Resource type.
-
----
-
-# 8. Location Representation
-
-If an Activity uses a Location, each Assignment Option contains one candidate `locationId`.
-
-If no Location is required:
-
-```text
-locationId = null
-```
-
-Location therefore remains optional.
-
----
-
-# 9. Complete Gene Example
-
-Suppose an Activity has:
-
-```text
-Teachers:
-Ana
-Pedro
-
-TimeSlots:
-Monday 09:00
-Monday 10:00
-Tuesday 09:00
-
-Locations:
-Room 1
-Room 2
-```
-
-Possible Assignment Options may be:
-
-```text
-Option 0
-Monday 09:00 / Ana / Room 1
-
-Option 1
-Monday 10:00 / Ana / Room 2
-
-Option 2
-Tuesday 09:00 / Pedro / Room 1
-```
-
-A gene with value:
-
-```text
-2
-```
-
-selects `Option 2`.
-
----
-
-# 10. Conceptual Planning Chromosome
-
-At application/design level, the Planning Chromosome is the ordered collection of Activity decisions.
-
-Example:
-
-```text
-Activity order:
-
-0 → Mathematics
-1 → Physics
-2 → English
-3 → Chemistry
-```
-
-A conceptual chromosome:
-
-```text
-[2,0,4,1]
+allele = 2
 ```
 
 means:
 
 ```text
-Activity 0 → AssignmentOption 2
-Activity 1 → AssignmentOption 0
-Activity 2 → AssignmentOption 4
-Activity 3 → AssignmentOption 1
+Activity A
+    ↓
+AssignmentOption 2
+    ↓
+Slot 2 / Resource 1 / Room B
+```
+
+---
+
+## 4. Candidate Generation
+
+Assignment options are created before the Jenetics evolution starts by:
+
+```text
+AssignmentCandidateGenerator
+```
+
+The generator receives a `PlanningProblem` and creates:
+
+```kotlin
+AssignmentCandidateGenerationResult
+```
+
+containing one:
+
+```kotlin
+ActivityCandidateOptions
+```
+
+for every Activity.
+
+Conceptually:
+
+```text
+PlanningProblem
+      │
+      ▼
+AssignmentCandidateGenerator
+      │
+      ├── Activity A → [O0, O1, O2]
+      ├── Activity B → [O0, O1]
+      └── Activity C → [O0, O1, O2, O3]
+```
+
+The ordering produced by candidate generation is preserved by the
+genetic codec.
+
+The codec does not sort Activities or AssignmentOptions by identifier.
+
+---
+
+## 5. Candidate TimeSlots
+
+For each Activity:
+
+```text
+allowedTimeSlotIds = null
+```
+
+means that all problem TimeSlots are structurally available.
+
+An explicit set restricts the candidate TimeSlots to the referenced
+identifiers.
+
+An empty set produces no valid TimeSlot candidate.
+
+Each `AssignmentOption` contains exactly one selected TimeSlot.
+
+---
+
+## 6. Candidate Resources
+
+An Activity can define multiple `ResourceRequirement` objects.
+
+Example:
+
+```text
+Activity
+
+Requirement R1
+type = teacher
+quantity = 1
+
+Requirement R2
+type = student-group
+quantity = 1
+```
+
+An AssignmentOption stores:
+
+```kotlin
+Map<ResourceRequirementId, List<ResourceId>>
+```
+
+The generator produces the valid resource combinations for each
+requirement.
+
+For a requirement:
+
+```text
+candidateResourceIds = null
+```
+
+all Resources matching its `resourceTypeId` may participate.
+
+An explicit candidate set restricts the Resources that can participate.
+
+`quantity` determines the exact number of distinct Resources selected
+for the requirement.
+
+For example:
+
+```text
+Candidates = [R1, R2, R3]
+Quantity = 2
+```
+
+produces combinations equivalent to:
+
+```text
+[R1, R2]
+[R1, R3]
+[R2, R3]
+```
+
+When an Activity contains several ResourceRequirements, their
+possibilities are combined through a Cartesian product.
+
+An Activity without ResourceRequirements produces one empty resource
+assignment.
+
+---
+
+## 7. Candidate Locations
+
+Location selection follows the same structural candidate approach.
+
+If an Activity defines explicit:
+
+```text
+allowedLocationIds
+```
+
+only those Locations participate.
+
+If `allowedLocationIds` is `null` and the PlanningProblem contains
+Locations, all Locations are structurally available.
+
+If `allowedLocationIds` is empty, no assignment option can be produced.
+
+If the PlanningProblem contains no Locations, candidate generation
+creates a valid alternative with:
+
+```text
+locationId = null
+```
+
+Location capacity is not used to remove AssignmentOptions.
+
+Capacity is evaluated later as a planning constraint.
+
+---
+
+## 8. Structural Validity vs Planning Feasibility
+
+Candidate generation preserves structural validity.
+
+For example, generated options reference:
+
+- Existing TimeSlots.
+- Existing Resources.
+- Compatible ResourceTypes.
+- Valid resource quantities.
+- Existing Locations when applicable.
+
+However, candidate generation intentionally does not guarantee planning
+feasibility.
+
+Consider:
+
+```text
+Activity A
+Slot 1
+Resource R1
+
+Activity B
+Slot 1
+Resource R1
+```
+
+Both assignments may be structurally valid independently.
+
+Together they may violate:
+
+```text
+NoOverlapConstraint
 ```
 
 Therefore:
 
 ```text
-conceptual chromosome length
-=
-number of Activities
+Structural possibility
+        ↓
+AssignmentCandidateGenerator
+        ↓
+Genetic representation
 ```
+
+while:
+
+```text
+Schedule-level validity
+        ↓
+ConstraintEvaluator
+        ↓
+HARD / SOFT violations
+```
+
+This separation is intentional.
 
 ---
 
-# 11. Stable Activity Ordering
+## 9. Constraints Are Not Encoding Rules
 
-The Activity-to-position relationship must remain stable during one optimization execution.
-
-Example:
+The implementation distinguishes:
 
 ```text
-position 0 → activity-001
-position 1 → activity-002
-position 2 → activity-003
+Structural impossibility
+        ↓
+Do not generate AssignmentOption
 ```
 
-The mapping must be deterministic.
+from:
 
-It is required for:
+```text
+Planning constraint violation
+        ↓
+Allow candidate Schedule
+        ↓
+Evaluate constraint
+        ↓
+Apply penalty
+```
 
-* Encoding.
-* Decoding.
-* Mutation.
-* Crossover.
-* Reproducibility.
-* Fitness evaluation.
+For this reason, candidate generation does not filter complete
+solutions using constraints such as:
+
+- `NoOverlapConstraint`
+- `AvailabilityConstraint`
+- `PreferredTimeSlotConstraint`
+- `MaxConsecutiveConstraint`
+- `BalancedWorkloadConstraint`
+- `LocationCapacityConstraint`
+
+This allows the Genetic Algorithm to explore infeasible regions of the
+search space and use fitness penalties to guide evolution.
 
 ---
 
-# 12. Genotype
+## 10. Jenetics Representation
 
-A `Genotype` represents one complete candidate planning solution.
-
-Conceptually:
+The Jenetics representation is implemented by:
 
 ```text
-Genotype
-    ↓
-Complete genetic representation
-of one candidate Schedule
+ScheduleGenotypeCodec
 ```
 
-After the Jenetics Proof of Concept, the selected physical representation is:
+Its dependency direction is:
 
 ```text
-Genotype
+Domain / Candidate Model
+          ▲
+          │
+ScheduleGenotypeCodec
+          │
+          ▼
+       Jenetics
+```
+
+No Jenetics type is exposed by the domain model.
+
+The physical representation is:
+
+```text
+Genotype<IntegerGene>
 │
-├── IntegerChromosome 0
-│       └── one IntegerGene → Activity 0
+├── IntegerChromosome
+│       └── IntegerGene → Activity 0
 │
-├── IntegerChromosome 1
-│       └── one IntegerGene → Activity 1
+├── IntegerChromosome
+│       └── IntegerGene → Activity 1
 │
-├── IntegerChromosome 2
-│       └── one IntegerGene → Activity 2
+├── IntegerChromosome
+│       └── IntegerGene → Activity 2
 │
 └── ...
 ```
 
 Therefore:
 
-> One Genotype contains one single-gene `IntegerChromosome` for every Activity.
-
-This allows every Activity to define an independent candidate range.
-
----
-
-# 13. Conceptual vs Jenetics Representation
-
-The application-level representation remains:
-
-```text
-[2,5,1]
-```
-
-Jenetics physically represents the same candidate as:
-
-```text
-Genotype
-
-├── [2]
-├── [5]
-└── [1]
-```
-
-The semantic interpretation remains:
-
-```text
-Activity 0 → Option 2
-Activity 1 → Option 5
-Activity 2 → Option 1
-```
-
-This distinction prevents Jenetics implementation details from leaking into the domain model.
+> One Genotype contains one single-gene IntegerChromosome for every
+> Activity.
 
 ---
 
-# 14. Candidate Space
+## 11. Why One Chromosome per Activity
 
-Before creating genetic candidates, the Genetic Engine builds the valid structural alternatives for every Activity.
-
-```text
-Activity
-   │
-   ├── Candidate TimeSlots
-   ├── Candidate Resources
-   └── Candidate Locations
-   │
-   ▼
-AssignmentOptions
-```
-
-Conceptually:
-
-```kotlin
-data class ActivityGeneDomain(
-    val activityId: String,
-    val options: List<AssignmentOption>
-)
-```
-
-For an Activity with `N` Assignment Options:
-
-```text
-valid allele values
-=
-0 .. N-1
-```
-
----
-
-# 15. Heterogeneous Candidate Domains
-
-Different Activities can have different numbers of Assignment Options.
+Different Activities can have different numbers of AssignmentOptions.
 
 Example:
 
 ```text
 Activity A → 3 options
-Activity B → 9 options
-Activity C → 5 options
+Activity B → 5 options
+Activity C → 2 options
 ```
 
-Therefore:
-
-```text
-Activity A gene → 0..2
-Activity B gene → 0..8
-Activity C gene → 0..4
-```
-
-This requirement was explicitly validated during the Jenetics PoC.
-
-The corresponding Jenetics representation is:
-
-```text
-Genotype
-│
-├── IntegerChromosome [0..2] → Activity A
-├── IntegerChromosome [0..8] → Activity B
-└── IntegerChromosome [0..4] → Activity C
-```
-
-Each chromosome contains exactly one gene.
-
----
-
-# 16. Separation of Candidate Space and Genotype
-
-The complete Assignment Options are not copied into every genotype.
-
-The candidate space is generated once:
-
-```text
-Activity A
-→ Option 0
-→ Option 1
-→ Option 2
-
-Activity B
-→ Option 0
-→ ...
-→ Option 8
-```
-
-The genotype stores only indexes:
-
-```text
-[[2], [5]]
-```
-
-Conceptually:
-
-```text
-[2,5]
-```
-
-This keeps individuals compact.
-
----
-
-# 17. Encoding
-
-Encoding transforms a `PlanningProblem` into the genetic representation.
-
-```text
-PlanningProblem
-      │
-      ▼
-Problem validation
-      │
-      ▼
-Deterministic Activity order
-      │
-      ▼
-CandidateSpaceBuilder
-      │
-      ▼
-AssignmentOptions per Activity
-      │
-      ▼
-One IntegerChromosome per Activity
-      │
-      ▼
-Genotype
-```
-
----
-
-# 18. Encoding Step 1 — Validate PlanningProblem
-
-Before encoding:
-
-* Activities must exist.
-* TimeSlots must exist.
-* Resource references must be valid.
-* ResourceRequirements must be structurally satisfiable.
-* Location references must be valid.
-* Every Activity must have at least one structurally possible assignment.
-
-If any Activity has zero options, optimization must not start.
-
----
-
-# 19. Encoding Step 2 — Establish Activity Order
-
-The encoder creates a deterministic ordering:
-
-```text
-0 → Activity A
-1 → Activity B
-2 → Activity C
-```
-
-This mapping is immutable for the complete optimization run.
-
----
-
-# 20. Encoding Step 3 — Generate Assignment Options
-
-Example:
-
-```text
-Activity A
-
-Option 0
-Monday 09:00 / Ana / Room 1
-
-Option 1
-Monday 10:00 / Pedro / Room 1
-
-Option 2
-Tuesday 09:00 / Ana / Room 2
-```
-
-Result:
-
-```text
-Activity A → [Option 0, Option 1, Option 2]
-```
-
----
-
-# 21. Encoding Step 4 — Create Jenetics Domains
-
-For:
-
-```text
-Activity A → 3 options
-Activity B → 9 options
-Activity C → 5 options
-```
-
-Jenetics receives conceptually:
-
-```kotlin
-Genotype.of(
-    IntegerChromosome.of(0, 3, 1),
-    IntegerChromosome.of(0, 9, 1),
-    IntegerChromosome.of(0, 5, 1)
-)
-```
-
-The valid allele ranges are therefore:
+The corresponding allele domains are:
 
 ```text
 Activity A → 0..2
-Activity B → 0..8
-Activity C → 0..4
+Activity B → 0..4
+Activity C → 0..1
 ```
+
+A single homogeneous integer chromosome would not naturally represent
+these independent ranges.
+
+The implemented representation therefore uses:
+
+```text
+Genotype
+├── IntegerChromosome → Activity A domain
+├── IntegerChromosome → Activity B domain
+└── IntegerChromosome → Activity C domain
+```
+
+Each chromosome contains exactly one gene and has the domain required
+by its Activity.
 
 ---
 
-# 22. Encoding Example
+## 12. Conceptual vs Physical Representation
 
-Suppose:
-
-```text
-A1 → [O10, O11, O12]
-A2 → [O20, O21]
-A3 → [O30, O31, O32, O33]
-```
-
-A candidate may physically be:
+For documentation purposes, a candidate can be written conceptually as:
 
 ```text
-[[1], [0], [3]]
-```
-
-and conceptually:
-
-```text
-[1,0,3]
+[2, 4, 1]
 ```
 
 meaning:
 
 ```text
-A1 → O11
-A2 → O20
-A3 → O33
+Activity A → Option 2
+Activity B → Option 4
+Activity C → Option 1
 ```
 
----
-
-# 23. Structural Validity
-
-Encoding guarantees:
-
-* One genetic decision per Activity.
-* Every allele references an existing AssignmentOption.
-* Every selected TimeSlot exists.
-* Resources exist and match required ResourceTypes.
-* Resource quantities are valid.
-* Locations exist when required.
-* All references belong to the same PlanningProblem.
-
-These are structural invariants.
-
----
-
-# 24. Structural Validity vs Constraint Validity
-
-A structurally valid candidate may violate planning constraints.
-
-Example:
-
-```text
-Mathematics
-Monday 09:00
-Teacher Ana
-
-Physics
-Monday 09:00
-Teacher Ana
-```
-
-Both Assignments can be structurally valid.
-
-However:
-
-```text
-NoOverlapConstraint
-    ↓
-HARD violation
-```
-
-The genotype remains valid.
-
-The decoded Schedule is simply infeasible.
-
----
-
-# 25. Constraints Are Not Encoding Rules
-
-The generic distinction is:
-
-```text
-Structural impossibility
-    ↓
-Do not generate AssignmentOption
-
-Planning constraint violation
-    ↓
-Allow candidate
-    ↓
-Evaluate and penalize
-```
-
-Constraints such as:
-
-* Availability.
-* NoOverlap.
-* MaximumAssignments.
-* PreferredTimeSlot.
-
-must generally remain inside the Constraint Engine.
-
----
-
-# 26. RequiredResource Consideration
-
-Suppose:
-
-```text
-Teacher candidates:
-Ana
-Pedro
-
-RequiredResourceConstraint:
-Ana
-```
-
-Both Ana and Pedro may remain structurally possible.
-
-Selecting Pedro creates:
-
-```text
-RequiredResourceConstraint
-    ↓
-HARD violation
-```
-
-This keeps configured constraint semantics centralized in the Constraint Engine.
-
----
-
-# 27. Decoding
-
-Decoding performs the inverse transformation:
+Jenetics physically stores the same decisions as:
 
 ```text
 Genotype
-      ↓
-Read one allele per chromosome
-      ↓
-Resolve Activity by position
-      ↓
-Resolve AssignmentOption
-      ↓
-Create Assignment
-      ↓
-Schedule
+├── [2]
+├── [4]
+└── [1]
+```
+
+or conceptually:
+
+```text
+[[2], [4], [1]]
+```
+
+The distinction is important:
+
+```text
+[2,4,1]
+```
+
+is a convenient domain-level notation, while the actual Jenetics
+representation uses heterogeneous single-gene chromosomes.
+
+---
+
+## 13. Stable Ordering
+
+Candidate ordering must remain stable during an optimization execution.
+
+Suppose candidate generation produces:
+
+```text
+position 0 → Activity A
+position 1 → Activity B
+position 2 → Activity C
+```
+
+The codec preserves this order when creating, encoding, and decoding
+genotypes.
+
+The AssignmentOption order for each Activity is also preserved.
+
+The codec deliberately does not sort candidates by their IDs.
+
+This stable positional mapping is required because:
+
+```text
+chromosome position
+        ↕
+ActivityCandidateOptions
+        ↕
+AssignmentOption domain
+```
+
+must remain consistent throughout the execution.
+
+---
+
+## 14. Allele Domains
+
+For an Activity with `N` AssignmentOptions:
+
+```text
+valid semantic allele values
+=
+0 .. N-1
+```
+
+For example:
+
+```text
+3 options → 0..2
+5 options → 0..4
+2 options → 0..1
+```
+
+The allele is interpreted exclusively as an index into the ordered
+AssignmentOption list.
+
+Identifiers themselves are never encoded as integer values.
+
+---
+
+## 15. Single-Option Activities
+
+An implementation-specific edge case exists when an Activity contains
+exactly one AssignmentOption.
+
+Semantically:
+
+```text
+options = [O0]
+```
+
+means:
+
+```text
+only valid allele = 0
+```
+
+A normal random integer chromosome with equal lower and upper bounds
+cannot be generated using the same Jenetics construction used for
+multi-option domains.
+
+Therefore `ScheduleGenotypeCodec` handles this case explicitly by
+constructing a fixed gene whose only usable value is:
+
+```text
+0
+```
+
+Conceptually:
+
+```text
+Activity
+   │
+   └── one AssignmentOption
+             │
+             ▼
+          allele 0
+```
+
+This is an implementation adaptation only.
+
+It does not change the conceptual rule:
+
+> Every Activity corresponds to one genetic decision.
+
+---
+
+## 16. Missing Candidate Options
+
+A genotype can only represent a complete Schedule if every Activity has
+at least one AssignmentOption.
+
+Therefore `ScheduleGenotypeCodec` rejects candidate generation results
+where:
+
+```text
+ActivityCandidateOptions.options.isEmpty()
+```
+
+The Genetic Engine also checks the candidate generation result before
+starting evolution.
+
+This is a technical precondition of the genetic representation.
+
+Structural validation of the complete `PlanningProblem` remains a
+separate responsibility of the validation/application flow.
+
+---
+
+## 17. Genotype Creation
+
+`ScheduleGenotypeCodec.createGenotype()` creates the genotype template
+used by Jenetics.
+
+Conceptually:
+
+```text
+Activity A → 3 options
+Activity B → 5 options
+Activity C → 2 options
+
+          ↓
+
+Genotype
+├── chromosome A → allele 0..2
+├── chromosome B → allele 0..4
+└── chromosome C → allele 0..1
+```
+
+Every chromosome contains exactly one `IntegerGene`.
+
+The resulting genotype always contains:
+
+```text
+number of chromosomes
+=
+number of Activities
 ```
 
 ---
 
-# 28. Decoding Algorithm
+## 18. Decoding
 
-For each chromosome position `i`:
+Decoding converts a Jenetics genotype into a domain `Schedule`.
+
+For each chromosome position:
 
 ```text
-activity =
-activityOrder[i]
-
-selectedOptionIndex =
-genotype.chromosome[i].gene.allele
-
-option =
-candidateSpace[i][selectedOptionIndex]
+chromosome position
+        ↓
+ActivityCandidateOptions
+        ↓
+IntegerGene allele
+        ↓
+AssignmentOption index
+        ↓
+Assignment
 ```
 
-Then:
+The selected option is transformed into:
 
 ```kotlin
 Assignment(
-    activityId = activity.id,
+    activityId = option.activityId,
     timeSlotId = option.timeSlotId,
     resourceAssignments = option.resourceAssignments,
     locationId = option.locationId
 )
 ```
 
-All Assignments form:
+All assignments are then collected into:
 
 ```kotlin
 Schedule(
-    planningProblemId = problem.id,
+    planningProblemId = planningProblemId,
     assignments = assignments
 )
 ```
 
+The decoder verifies that the genotype contains the expected number of
+chromosomes and that each chromosome contains exactly one gene.
+
+The selected allele must also correspond to an existing
+AssignmentOption.
+
 ---
 
-# 29. Codec Boundary
+## 19. Encoding
 
-Jenetics provides a `Codec` abstraction that can encapsulate:
+`ScheduleGenotypeCodec` also supports the inverse operation:
+
+```text
+Schedule
+    ↓
+Genotype
+```
+
+Encoding is useful for:
+
+- Codec validation.
+- Tests.
+- Round-trip verification.
+- Converting known domain solutions into their genetic representation.
+
+For every expected Activity, the codec:
+
+```text
+Activity
+    ↓
+Find exactly one Assignment
+    ↓
+Find matching AssignmentOption
+    ↓
+Resolve option index
+    ↓
+Create IntegerGene
+```
+
+The encoded Schedule must:
+
+- Belong to the expected PlanningProblem.
+- Contain exactly one Assignment for every expected Activity.
+- Not contain duplicate assignments for an Activity.
+- Use an Assignment that corresponds to a known AssignmentOption.
+
+Otherwise encoding is rejected.
+
+---
+
+## 20. Round-Trip Consistency
+
+The codec supports both transformations:
 
 ```text
 Genotype
-    ↓
-decoder
-    ↓
+    ↓ decode
 Schedule
-```
-
-The intended production flow is therefore:
-
-```text
-Jenetics Genotype
-      ↓
-Codec / Decoder
-      ↓
-Domain Schedule
-```
-
-The Constraint Engine evaluates the decoded `Schedule`, not Jenetics objects.
-
----
-
-# 30. Complete Flow
-
-```text
-PlanningProblem
-        ↓
-
-ProblemValidator
-        ↓
-
-CandidateSpaceBuilder
-        ↓
-
-ENCODING
-        ↓
-
+    ↓ encode
 Genotype
-├── [gene for Activity 0]
-├── [gene for Activity 1]
-├── [gene for Activity 2]
-└── ...
-
-        ↓ evolution
-
-Evolved Genotype
-
-        ↓ DECODING
-
-Schedule
-
-        ↓
-
-ConstraintEvaluator
-
-        ↓
-
-ScheduleEvaluation
-
-        ↓
-
-Fitness
 ```
+
+and:
+
+```text
+Schedule
+    ↓ encode
+Genotype
+    ↓ decode
+Schedule
+```
+
+For valid inputs, these transformations preserve the scheduling
+decisions.
+
+This behavior is covered by codec unit tests.
 
 ---
 
-# 31. Complete Candidate Requirement
+## 21. Complete Candidate Requirement
 
-Every Genotype represents a complete candidate Schedule.
+Every genotype represents a complete candidate Schedule.
 
-Partial schedules are not supported in the MVP.
+Partial schedules are not part of the MVP representation.
 
 Therefore:
 
 ```text
-number of Jenetics chromosomes
+N Activities
 =
-number of Activities
+N chromosomes
+=
+N Assignments after decoding
 ```
 
-and each Jenetics chromosome contains:
+This representation makes every Activity participate in every candidate
+solution.
 
-```text
-1 IntegerGene
-```
+Completeness does not imply feasibility.
+
+A complete candidate can still violate HARD constraints.
 
 ---
 
-# 32. Mutation
+## 22. Mutation
 
-Mutation changes the selected option of an Activity.
+The Genetic Engine uses Jenetics `Mutator`.
+
+Mutation changes genetic decision values while respecting the chromosome
+domain.
 
 Conceptually:
 
 ```text
-Before:
-[2,0,4,1]
+Before
 
-After:
-[2,3,4,1]
+[2, 0, 4, 1]
+
+        ↓ mutation
+
+After
+
+[2, 3, 4, 1]
 ```
 
-Only the Activity associated with position 1 changes.
+The mutated value still identifies an AssignmentOption available to the
+corresponding Activity.
 
----
+Mutation can:
 
-# 33. Mutation and Structural Validity
-
-Because every Activity chromosome has its own valid integer range, mutation remains within that range.
-
-Example:
-
-```text
-Activity A
-3 AssignmentOptions
-
-valid alleles:
-0..2
-```
-
-An invalid allele such as `8` cannot represent a valid value for that chromosome.
-
-This supports structural validity by construction.
-
----
-
-# 34. Mutation and Constraints
-
-Mutation can still:
-
-* Create HARD violations.
-* Remove HARD violations.
-* Increase SOFT penalties.
-* Reduce SOFT penalties.
+- Introduce HARD violations.
+- Remove HARD violations.
+- Increase SOFT penalties.
+- Reduce SOFT penalties.
 
 This is expected.
 
@@ -973,178 +868,51 @@ Genetic validity does not imply planning feasibility.
 
 ---
 
-# 35. Crossover
+## 23. Crossover
 
-Crossover combines Activity decisions from parent candidate solutions.
+The implemented Genetic Engine uses:
+
+```text
+SinglePointCrossover
+```
+
+Crossover combines Activity decisions from parent genotypes.
 
 Conceptually:
 
 ```text
-Parent A:
-[2,0,4,1]
+Parent A
 
-Parent B:
-[1,3,2,0]
+[2, 0, 4, 1]
 
-Child:
-[2,0,2,0]
+Parent B
+
+[1, 3, 2, 0]
+
+        ↓ single-point crossover
+
+Child
+
+[2, 0, 2, 0]
 ```
 
-The child inherits assignment decisions from both parents.
+The child still contains one decision for every Activity.
+
+However, crossover may create a Schedule that violates planning
+constraints.
+
+For example, two independently valid inherited assignments may use the
+same Resource during overlapping TimeSlots.
+
+Such a child remains genetically valid and is evaluated by the
+Constraint Engine.
 
 ---
 
-# 36. Crossover and Feasibility
+## 24. Search Space
 
-Two feasible parents can produce an infeasible child.
-
-Example:
-
-```text
-Parent A:
-A → Monday / Ana
-B → Tuesday / Ana
-
-Parent B:
-A → Tuesday / Ana
-B → Monday / Ana
-```
-
-A child could contain:
-
-```text
-A → Monday / Ana
-B → Monday / Ana
-```
-
-creating:
-
-```text
-NoOverlapConstraint
-    ↓
-HARD violation
-```
-
-This is normal Genetic Algorithm behaviour.
-
----
-
-# 37. Crossover and Heterogeneous Domains
-
-The Jenetics PoC confirmed that heterogeneous domains can be represented through one chromosome per Activity.
-
-The invariant is:
-
-```text
-chromosome position
-        ↕
-Activity
-        ↕
-candidate domain
-```
-
-The selected production crossover operator must preserve this relationship.
-
-The exact operator belongs to the Genetic Algorithm configuration task.
-
----
-
-# 38. Academic Scheduling Validation
-
-Example:
-
-```text
-Activity:
-Mathematics lesson
-
-Resources:
-Teacher Ana
-Student Group 1A
-
-TimeSlot:
-Monday 09:00
-
-Location:
-Room 2
-```
-
-is encoded as:
-
-```text
-Activity
-    ↓
-AssignmentOption index
-    ↓
-IntegerGene
-```
-
-No academic-specific type appears in the genetic representation.
-
----
-
-# 39. Work Shift Scheduling Validation
-
-Example:
-
-```text
-Activity:
-Reception assignment
-
-Resource:
-Employee Laura
-
-TimeSlot:
-Monday 08:00–14:00
-
-Location:
-Reception
-```
-
-uses exactly the same representation:
-
-```text
-Activity
-    ↓
-AssignmentOption index
-    ↓
-IntegerGene
-```
-
-No work-specific type appears in the Genetic Engine.
-
----
-
-# 40. Cross-Domain Validation
-
-The Genetic Engine only knows generic concepts:
-
-```text
-Activity
-Resource
-ResourceRequirement
-TimeSlot
-Location
-AssignmentOption
-Schedule
-```
-
-It does not know:
-
-```text
-Teacher
-Student
-Subject
-Employee
-Shift
-```
-
-Therefore the same encoder, genotype and decoder can support both target domains.
-
----
-
-# 41. Search Space
-
-If Activity `i` contains `Oi` Assignment Options, the theoretical search space is:
+If Activity `i` contains `Oi` AssignmentOptions, the theoretical search
+space is:
 
 ```text
 O1 × O2 × ... × On
@@ -1153,356 +921,425 @@ O1 × O2 × ... × On
 Example:
 
 ```text
-A → 4 options
-B → 5 options
-C → 3 options
+Activity A → 4 options
+Activity B → 5 options
+Activity C → 3 options
 
 4 × 5 × 3
 =
-60 schedules
+60 possible schedules
 ```
 
-The rapid growth of this value motivates the Genetic Algorithm.
+This multiplicative growth is one of the reasons for using a
+metaheuristic optimization strategy instead of exhaustive enumeration.
 
 ---
 
-# 42. AssignmentOption Explosion
+## 25. Candidate-Space Growth
 
-Materializing Assignment Options can itself become expensive.
+Materializing AssignmentOptions can itself become expensive.
 
-Example:
+For example:
 
 ```text
 20 TimeSlots
 ×
-10 Resources
+10 Resource alternatives
 ×
 5 Locations
-
 =
-1,000 alternatives
+1,000 possible combinations
 ```
 
-Candidate generation must therefore apply structural filters before creating combinations.
+for a single Activity before considering other dimensions.
 
-This risk remains independent from Jenetics.
+The current MVP deliberately precomputes AssignmentOptions because it
+keeps the genetic representation and constraint evaluation simple.
+
+If candidate generation becomes a scalability bottleneck, future
+versions could encode TimeSlot, Resource, and Location decisions
+separately.
+
+That alternative is not required for the current MVP.
 
 ---
 
-# 43. MVP Representation
+## 26. Domain Independence
 
-The validated MVP representation is:
+The representation uses only generic planning concepts:
 
 ```text
-PlanningProblem
-      ↓
-CandidateSpace
-      ↓
-One option domain per Activity
-      ↓
-Genotype
-├── one single-gene IntegerChromosome per Activity
-      ↓
-Evolution
-      ↓
-Decoder / Codec
-      ↓
+Activity
+Resource
+ResourceRequirement
+TimeSlot
+Location
+AssignmentOption
+Assignment
 Schedule
 ```
 
-Conceptually the same candidate is still represented as:
+For an academic planning template:
 
 ```text
-[2,0,4,...]
+Mathematics lesson
+        ↓
+Activity
+        ↓
+AssignmentOption index
+        ↓
+IntegerGene
 ```
+
+For a work-shift template:
+
+```text
+Reception assignment
+        ↓
+Activity
+        ↓
+AssignmentOption index
+        ↓
+IntegerGene
+```
+
+The Genetic Engine does not need to know whether a Resource represents
+a teacher, employee, student group, or another template-specific
+concept.
 
 ---
 
-# 44. Future Alternatives
+## 27. Jenetics ↔ Domain Boundary
 
-If AssignmentOption enumeration becomes a scalability bottleneck, future versions may separate:
+The complete adaptation is:
 
 ```text
-TimeSlot decision
-Resource decision
-Location decision
+                    DOMAIN
+                      │
+                      ▼
+               PlanningProblem
+                      │
+                      ▼
+          AssignmentCandidateGenerator
+                      │
+                      ▼
+       AssignmentCandidateGenerationResult
+                      │
+                      ▼
+             ScheduleGenotypeCodec
+                      │
+              ┌───────┴────────┐
+              │                │
+           encode            decode
+              │                │
+              ▼                ▼
+           JENETICS          Schedule
+           Genotype             │
+              │                 ▼
+              │         ConstraintEvaluator
+              │                 │
+              └──── evolution   ▼
+                         ScheduleEvaluation
 ```
 
-into different genetic dimensions.
-
-This is not required for the MVP.
-
----
-
-# 45. Jenetics Boundary
-
-Domain classes remain free of Jenetics types.
-
-The dependency direction is:
+The dependency direction remains:
 
 ```text
-Domain Model
-      ▲
-      │
-Genetic Engine Adapter
-      │
-      ▼
+Domain
+  ▲
+  │
+Genetic infrastructure
+  │
+  ▼
 Jenetics
 ```
 
-Jenetics-specific code belongs to the Genetic Engine infrastructure.
+Domain classes never depend on Jenetics.
 
 ---
 
-# 46. Jenetics Validation Result
+## 28. Implementation Decisions
 
-The Proof of Concept was executed using:
+### CH1 — One Activity is one genetic decision
 
-```text
-Java       25
-Gradle     9.7.0
-Kotlin     2.4.0
-Jenetics   9.1.0
-```
+Every Activity represents one atomic schedulable unit and selects one
+AssignmentOption.
 
-The homogeneous test reached:
+### CH2 — One single-gene chromosome per Activity
 
-```text
-Best genotype: [[[4],[4],[4],[4]]]
-Best fitness: 16
-```
+The physical Jenetics representation uses one `IntegerChromosome`
+containing one `IntegerGene` for every Activity.
 
-The heterogeneous test also successfully represented independent Activity domains and reached its expected optimum.
+### CH3 — One Genotype represents one complete candidate Schedule
 
-Therefore the representation defined in this document is technically viable with Jenetics.
+Partial candidate schedules are not supported.
+
+### CH4 — Alleles are AssignmentOption indexes
+
+Genes contain compact integer indexes instead of domain objects.
+
+### CH5 — Candidate options are external to genotypes
+
+Complete AssignmentOption objects are generated once and reused by the
+codec.
+
+### CH6 — Candidate domains may be heterogeneous
+
+Every Activity can have a different number of AssignmentOptions.
+
+### CH7 — Candidate order is preserved
+
+Activity and AssignmentOption ordering from candidate generation is
+used directly by the codec.
+
+### CH8 — Candidate generation handles structural possibilities
+
+Complete-schedule planning constraints are not used to prune the
+genetic search space.
+
+### CH9 — Planning feasibility is evaluated after decoding
+
+HARD and SOFT constraints operate on domain `Schedule` objects.
+
+### CH10 — Encoding and decoding are both supported
+
+`ScheduleGenotypeCodec` provides deterministic conversion between the
+domain and genetic representations.
+
+### CH11 — Single-option Activities use a fixed allele
+
+An Activity with one AssignmentOption is represented using allele zero
+without changing the general chromosome structure.
+
+### CH12 — Missing candidate domains are rejected
+
+Evolution cannot start if any Activity has zero AssignmentOptions.
+
+### CH13 — Domain identifiers remain opaque
+
+IDs are not converted into numeric genetic values. Alleles represent
+positions in candidate lists only.
+
+### CH14 — The representation remains domain-independent
+
+Academic and Work Shift planning use exactly the same codec.
+
+### CH15 — Jenetics remains an infrastructure dependency
+
+No Jenetics type appears in the planning domain.
 
 ---
 
-# 47. Representation Architecture
+## 29. Deviations from Initial Design
+
+The initial chromosome design was largely validated by implementation,
+but several details were refined during M2.
+
+### CandidateSpaceBuilder was replaced by the implemented candidate model
+
+The initial design referred conceptually to:
+
+```text
+CandidateSpaceBuilder
+ActivityGeneDomain
+```
+
+The implemented types are:
+
+```text
+AssignmentCandidateGenerator
+AssignmentCandidateGenerationResult
+ActivityCandidateOptions
+AssignmentOption
+```
+
+The underlying concept remains unchanged: every Activity receives an
+ordered candidate domain before evolution begins.
+
+### AssignmentOption includes activityId
+
+The initial conceptual model represented an option mainly through its
+TimeSlot, Resources, and Location.
+
+The implemented `AssignmentOption` also contains:
+
+```text
+activityId
+```
+
+This makes the Activity association explicit and supports conversion to
+domain Assignments.
+
+### Problem validation was separated from genotype encoding
+
+The initial flow showed:
 
 ```text
 PlanningProblem
-      │
-      ▼
+    ↓
 ProblemValidator
-      │
-      ▼
-CandidateSpaceBuilder
-      │
-      ▼
+    ↓
 Encoding
-      │
-      ▼
-Genotype
-│
-├── Activity 0 IntegerChromosome
-├── Activity 1 IntegerChromosome
-├── Activity 2 IntegerChromosome
-└── ...
-      │
-      ▼
-Jenetics Evolution
-      │
-      ▼
-Genotype
-      │
-      ▼
-Codec / Decoder
-      │
-      ▼
-Schedule
-      │
-      ▼
-ConstraintEvaluator
-      │
-      ▼
-ScheduleEvaluation
-      │
-      ▼
-Fitness
 ```
 
----
+The final architecture keeps full problem validation as an
+application/orchestration responsibility.
 
-# 48. Design Decisions
+`ScheduleGenotypeCodec` only enforces the technical preconditions needed
+to represent the candidate domains.
 
-## CH1 — One genetic decision per Activity
+In particular, activities with no AssignmentOptions are rejected before
+evolution.
 
-Each Activity selects exactly one AssignmentOption.
+### Encoding terminology was refined
 
-## CH2 — Complete candidate solutions
+The initial document described encoding mainly as the transformation
+from `PlanningProblem` to a genotype.
 
-Every Genotype represents a complete candidate Schedule.
-
-## CH3 — Stable Activity ordering
-
-Activity position remains fixed during one optimization run.
-
-## CH4 — AssignmentOption indexes are evolved
-
-Genes store compact option indexes rather than domain objects.
-
-## CH5 — AssignmentOptions contain the scheduling decision
-
-Each option contains TimeSlot, Resources and optional Location.
-
-## CH6 — Candidate space is external to individuals
-
-Options are built once and reused.
-
-## CH7 — Encoding preserves structural validity
-
-Only structurally valid AssignmentOptions are generated.
-
-## CH8 — Planning feasibility is evaluated separately
-
-HARD and SOFT constraints are not generally encoded into chromosome structure.
-
-## CH9 — One Jenetics IntegerChromosome per Activity
-
-The Jenetics implementation uses a single-gene chromosome for each Activity.
-
-## CH10 — Heterogeneous domains are supported
-
-Every Activity chromosome has an independent integer range.
-
-## CH11 — Conceptual chromosome remains domain-level notation
-
-The application may continue to describe candidates as:
-
-```text
-[2,5,1]
-```
-
-even though Jenetics physically stores:
-
-```text
-[[2],[5],[1]]
-```
-
-## CH12 — Mutation preserves candidate range
-
-Mutation must remain inside the corresponding Activity domain.
-
-## CH13 — Crossover must preserve Activity/domain correspondence
-
-The final crossover operator must respect the heterogeneous chromosome structure.
-
-## CH14 — Encoding and decoding are domain-independent
-
-Academic and Work Shift planning use the same mechanisms.
-
-## CH15 — Domain model remains independent from Jenetics
-
-Jenetics types are isolated in the Genetic Engine infrastructure.
-
-## CH16 — Codec/Decoder bridges genetic and domain representations
-
-The evolved Genotype is decoded into `Schedule` before planning evaluation.
-
----
-
-# 49. Scope Boundary
-
-This document defines:
-
-* Gene semantics.
-* Conceptual chromosome semantics.
-* Jenetics physical representation.
-* Genotype semantics.
-* Candidate-space representation.
-* Encoding.
-* Decoding.
-* Structural validity.
-* Mutation implications.
-* Crossover implications.
-* Cross-domain applicability.
-* Jenetics integration boundary.
-
-It does not define:
-
-* Final fitness formula.
-* Population size for production.
-* Mutation probability.
-* Crossover probability.
-* Selection strategy.
-* Final alterers.
-* Termination criteria.
-
-These belong to the following Genetic Algorithm design tasks.
-
----
-
-# 50. Summary
-
-The final validated representation is:
+The implementation separates three responsibilities:
 
 ```text
 PlanningProblem
         ↓
-CandidateSpaceBuilder
+AssignmentCandidateGenerator
         ↓
-ENCODING
+candidate domains
         ↓
+ScheduleGenotypeCodec.createGenotype()
+```
 
-Genotype
+while `ScheduleGenotypeCodec.encode(schedule)` specifically means:
+
+```text
+Schedule → Genotype
+```
+
+This distinction avoids ambiguity between candidate-space construction
+and codec encoding.
+
+### Single-option handling was added
+
+The initial design did not identify the Jenetics edge case produced by
+an Activity with exactly one candidate.
+
+The implemented codec explicitly represents that case using the only
+semantic allele:
+
+```text
+0
+```
+
+### Crossover is no longer unspecified
+
+The initial design required the selected crossover operator to preserve
+Activity/domain correspondence but left the operator undecided.
+
+The implementation uses:
+
+```text
+SinglePointCrossover
+```
+
+### Jenetics range details were refined
+
+The conceptual domain remains:
+
+```text
+N options → indexes 0..N-1
+```
+
+Implementation and tests focus on the valid allele values rather than
+depending on Jenetics internal range metadata.
+
+This was necessary because different Jenetics construction APIs expose
+range bounds differently, particularly for manually constructed
+single-option genes.
+
+---
+
+## 30. Current Limitations
+
+The current representation intentionally:
+
+- Materializes AssignmentOptions before evolution.
+- Represents each Activity as one atomic scheduling decision.
+- Does not represent partial schedules.
+- Does not encode recurrence directly.
+- Does not use domain-specific chromosomes.
+- Does not dynamically resize candidate domains during evolution.
+
+These decisions keep the MVP representation simple and generic.
+
+They can be revisited if scalability experiments identify candidate
+generation or chromosome representation as a bottleneck.
+
+---
+
+## 31. Summary
+
+The implemented representation is:
+
+```text
+PlanningProblem
+        │
+        ▼
+AssignmentCandidateGenerator
+        │
+        ▼
+ActivityCandidateOptions
+        │
+        ▼
+ScheduleGenotypeCodec
+        │
+        ▼
+Genotype<IntegerGene>
 │
-├── [Gene Activity 0]
-├── [Gene Activity 1]
-├── [Gene Activity 2]
+├── IntegerChromosome → Activity 0
+│       └── one IntegerGene
+│
+├── IntegerChromosome → Activity 1
+│       └── one IntegerGene
+│
 └── ...
-
-        ↓
-Genetic Evolution
-        ↓
-
+        │
+        ▼
+Jenetics evolution
+        │
+        ▼
 Evolved Genotype
-
-        ↓
-DECODING
-        ↓
-
+        │
+        ▼
+ScheduleGenotypeCodec.decode()
+        │
+        ▼
 Schedule
-
-        ↓
+        │
+        ▼
 ConstraintEvaluator
-        ↓
+        │
+        ▼
 ScheduleEvaluation
-        ↓
-Fitness
 ```
 
 At conceptual level:
 
 ```text
 Gene
-    = selected AssignmentOption for one Activity
-
-Planning Chromosome
-    = ordered sequence of Activity decisions
-
-Genotype
-    = complete candidate solution
+=
+selected AssignmentOption index for one Activity
 ```
-
-At Jenetics implementation level:
 
 ```text
-Activity
-    ↓
-one IntegerGene
-    ↓
-one single-gene IntegerChromosome
-
-N Activities
-    ↓
-N IntegerChromosomes
-    ↓
-one Genotype
+Genotype
+=
+ordered collection of all Activity decisions
+=
+one complete candidate Schedule
 ```
 
-The key principle remains:
+The central implementation principle is:
 
-> **The genetic representation stores scheduling decisions, the domain model defines the planning problem, and the Constraint Engine determines the quality and feasibility of the decoded Schedule.**
-
-The Jenetics Proof of Concept confirms that this representation is technically viable for Genetic Planner 1.0.
+> The genotype stores compact indexes into structurally valid assignment
+> alternatives; the domain defines planning semantics; and the
+> Constraint Engine evaluates the quality and feasibility of the decoded
+> Schedule.

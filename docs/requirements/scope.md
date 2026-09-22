@@ -8,7 +8,7 @@ The application is designed to support different scheduling scenarios, such as a
 
 Rather than implementing a scheduling engine tied to a specific domain, Genetic Planner models planning problems through a set of generic concepts such as **resources, activities, time slots, locations, and constraints**.
 
-The same genetic optimization engine should therefore be able to process different planning scenarios without requiring changes to its core implementation.
+The same genetic optimization engine must therefore be able to process different planning scenarios without requiring changes to its core implementation.
 
 The application will provide an intuitive and visually attractive graphical interface so that users can configure and generate schedules without requiring knowledge of genetic algorithms or optimization techniques.
 
@@ -53,31 +53,33 @@ For the MVP, only one generic user profile will therefore be considered. Authent
 
 ## 4. Generic Planning Model
 
-Genetic Planner must represent planning problems independently of their specific application domain.
+Genetic Planner represents planning problems independently of their specific application domain.
 
-A planning problem will be conceptually represented as:
+A planning problem is represented through the generic `PlanningProblem` model:
 
 ```text
-Planning Problem
+PlanningProblem
       │
       ├── Resources
       ├── Activities
-      ├── Time Slots
+      ├── TimeSlots
       ├── Locations
       └── Constraints
               │
               ▼
-       Genetic Algorithm
+       Genetic Engine
               │
               ▼
            Schedule
 ```
 
-The exact structure and relationships between these concepts will be defined as part of the domain model design.
+The Genetic Engine must not contain domain-specific concepts such as `Teacher`, `Student`, `Employee`, `Subject`, or `WorkShift`.
 
-The genetic optimization engine must not contain domain-specific concepts such as `Teacher`, `Student`, `Employee`, `Subject`, or `WorkShift`.
+Domain-specific concepts are translated into the generic planning model through planning templates.
 
-Domain-specific concepts will instead be translated into the generic planning model through planning templates.
+The central architectural principle is:
+
+> **Genericity belongs to the planning model and Genetic Engine; specificity belongs to templates and user experience.**
 
 ---
 
@@ -114,7 +116,7 @@ The Planner must be able to configure:
 * Locations, when applicable.
 * Constraints.
 
-The configured information must internally produce a generic `PlanningProblem` that can be processed by the optimization engine.
+The configured information must internally produce a generic `PlanningProblem` that can be processed by the Genetic Engine.
 
 #### Academic Scheduling Template
 
@@ -126,27 +128,35 @@ The template must map domain-specific academic concepts to the generic planning 
 
 Although Academic Scheduling is the mandatory implemented scenario, the architecture must demonstrate that additional domains can be supported without modifying the Genetic Engine.
 
-The **Work Shift Scheduling** scenario will be designed as a second mapping during the MVP and is classified as a Should Have implementation.
+The **Work Shift Scheduling** scenario will be used as a secondary validation scenario and is classified as a Should Have implementation.
 
 #### Constraints
 
 The MVP must distinguish between:
 
-* **Hard constraints:** conditions that determine whether a schedule is valid.
-* **Soft constraints:** desirable conditions whose violation reduces solution quality.
+* **Hard constraints:** mandatory planning rules whose violation makes a schedule infeasible.
+* **Soft constraints:** preferences or quality objectives whose violation increases the optimization penalty without making the schedule infeasible.
 
-The mandatory constraint catalogue consists of:
+The core implemented constraint catalogue consists of:
 
-* `NoOverlap`
-* `Availability`
-* `RequiredResource`
-* `MaximumAssignments`
+**Hard constraints**
+
+* `NoOverlapConstraint`
+* `AvailabilityConstraint`
+* `RequiredResourceConstraint`
+* `LocationCapacityConstraint`
+
+**Soft constraints**
+
+* `PreferredTimeSlotConstraint`
+* `MaxConsecutiveConstraint`
+* `BalancedWorkloadConstraint`
 
 The constraint architecture must allow additional constraint types to be introduced without modifying the Genetic Engine.
 
 #### Genetic Optimization
 
-The system must generate schedules using a genetic algorithm.
+The system must generate and optimize schedules using a genetic algorithm.
 
 The optimization process must support:
 
@@ -156,21 +166,29 @@ The optimization process must support:
 * Crossover.
 * Mutation.
 * Elitism.
-* Termination criteria.
+* Generation-based termination.
+* Deterministic execution through an optional random seed.
 
 The Genetic Engine must operate on the generic planning model and remain independent of specific planning templates.
 
 #### Genetic Algorithm Configuration
 
-The MVP must provide predefined optimization configurations:
+The MVP provides three predefined optimization configurations:
 
-* **Fast**
-* **Balanced**
-* **Exhaustive**
+* **FAST**
+* **BALANCED**
+* **EXHAUSTIVE**
 
-`Balanced` will be the default configuration.
+`BALANCED` is the default configuration.
 
-The underlying genetic configuration must support parameters such as population size, generation limit, mutation probability, crossover probability, and elitism.
+The underlying genetic configuration supports:
+
+* Population size.
+* Generation limit.
+* Mutation probability.
+* Crossover probability.
+* Elite count.
+* Optional random seed.
 
 Direct modification of these parameters through the graphical interface is classified as a Should Have feature.
 
@@ -178,14 +196,17 @@ Direct modification of these parameters through the graphical interface is class
 
 The Planner must be able to start the optimization process after configuring the planning problem.
 
-The resulting `PlanningResult` must contain:
+The resulting `OptimizationResult` must provide:
 
-* Generated schedule.
+* Generated `Schedule`.
 * Fitness value.
-* Hard constraint violations.
-* Soft constraint violations.
-* Number of generations performed.
+* Feasibility.
+* Hard penalty.
+* Soft penalty.
+* Detailed constraint results.
+* Number of generations executed.
 * Execution time.
+* Random seed used for the execution.
 
 #### Graphical User Interface
 
@@ -230,21 +251,26 @@ The generated schedule must be displayed graphically.
 The result view must also display:
 
 * Fitness.
+* Feasibility.
 * Hard constraint violations.
 * Soft constraint violations.
+* Relevant penalty breakdown.
 * Number of generations.
 * Execution time.
 
-The interface must clearly indicate whether the solution contains hard constraint violations.
+The interface must clearly indicate whether the generated schedule is feasible or contains hard constraint violations.
 
 #### Quality and Evaluation
 
 The MVP must include:
 
 * Automated tests for the core planning and genetic functionality.
-* At least one dataset suitable for validating the Academic Scheduling scenario.
-* Experimental evaluation of the genetic algorithm using different configurations.
+* Datasets suitable for validating planning and optimization behavior.
+* At least one dataset suitable for the Academic Scheduling end-to-end validation scenario.
+* Experimental evaluation of the Genetic Algorithm using different configurations.
 * Measurement of solution quality and execution time.
+
+The initial Genetic Engine experiment performed during M2 provides a baseline validation of the implemented optimization engine. More extensive evaluation with multiple executions, seeds, and problem sizes belongs to the final evaluation phase.
 
 ---
 
@@ -268,13 +294,14 @@ If development time prevents completion of this template, its mapping and archit
 
 #### Additional Constraints
 
-The following additional constraints should be considered:
+Additional generic constraints may be introduced if required by the validation scenarios or experimental evaluation.
 
-* `MinimumAssignments`
-* `MaxConsecutive`
-* `PreferredTimeSlot`
+Possible examples include:
 
-`PreferredTimeSlot` is particularly useful for demonstrating weighted soft constraints.
+* `MinimumAssignmentsConstraint`
+* `DifferentDayConstraint`
+
+New constraints must remain independent from planning templates and must not require modifications to the Genetic Engine.
 
 #### Advanced Genetic Configuration
 
@@ -284,7 +311,8 @@ An advanced configuration section should allow modification of:
 * Generation limit.
 * Mutation probability.
 * Crossover probability.
-* Elitism.
+* Elite count.
+* Random seed.
 
 The underlying parameters already form part of the Must Have Genetic Engine; this priority applies only to exposing them through the UI.
 
@@ -366,6 +394,7 @@ It must demonstrate:
 
 * Configuration through the graphical interface.
 * Translation into the generic `PlanningProblem`.
+* Planning problem validation.
 * Constraint evaluation.
 * Genetic optimization.
 * Schedule generation.
@@ -390,6 +419,7 @@ The implementation should demonstrate:
 
 If the complete graphical workflow cannot be implemented within the available development time, the scenario may be validated through an automated dataset and documented mapping.
 
+---
 
 ## 8. Flexibility Principle
 
@@ -404,7 +434,7 @@ Academic Template ───────┐
                   PlanningProblem
                          │
                          ▼
-                  Genetic Engine
+                   Genetic Engine
                          │
                          ▼
                       Schedule
@@ -415,39 +445,43 @@ Work Shift Template ─────┘
 
 Adding a new planning scenario should primarily involve defining how its domain concepts are mapped to the generic planning model and which constraints are applicable.
 
-The core Genetic Engine should not require modification when introducing a new planning template.
-
----
+The core Genetic Engine must not require modification when introducing a new planning template.
 
 ---
 
 ## 9. MVP Acceptance Criteria
 
-The Genetic Planner MVP will be considered successfully completed when all **Must Have** criteria below are satisfied:
+The Genetic Planner MVP will be considered successfully completed when all **Must Have** criteria below are satisfied.
 
-* [ ] Planning problems can be represented independently of a specific application domain.
-* [ ] Resources, activities, time slots, locations, and constraints can be configured.
-* [ ] Hard and soft constraints are supported.
-* [ ] The mandatory generic constraints are implemented.
-* [ ] A genetic algorithm generates and optimizes schedules.
-* [ ] The Genetic Engine is independent of planning templates.
+The checkboxes represent the current implementation status and may be updated as development progresses.
+
+### Must Have
+
+* [x] Planning problems can be represented independently of a specific application domain.
+* [ ] Resources, activities, time slots, locations, and constraints can be configured through the application.
+* [x] Hard and soft constraints are supported by the core domain.
+* [x] The core generic constraints are implemented.
+* [x] A genetic algorithm generates and optimizes schedules.
+* [x] The Genetic Engine is independent of planning templates.
 * [ ] The Academic Scheduling scenario can be configured and executed end-to-end.
-* [ ] Academic Scheduling uses the generic `PlanningProblem` and Genetic Engine.
+* [ ] Academic Scheduling uses the generic `PlanningProblem` and Genetic Engine end-to-end.
 * [ ] Planning problems can be configured through a graphical web interface.
 * [ ] Normal use of the application does not require knowledge of genetic algorithms.
 * [ ] Generated schedules are displayed graphically.
-* [ ] Fitness, constraint violations, generations, and execution time are displayed.
-* [ ] The application clearly identifies hard constraint violations.
-* [ ] The application can be executed locally following the project documentation.
-* [ ] Automated tests cover the core planning, constraint, and optimization functionality.
-* [ ] The genetic algorithm is experimentally evaluated using different configurations.
-* [ ] The main architecture and design decisions are documented.
+* [ ] Fitness, constraint violations, generations, and execution time are displayed through the application.
+* [ ] The application clearly identifies hard constraint violations in the results interface.
+* [x] The application backend can be executed locally following the project documentation.
+* [x] Automated tests cover the core planning, constraint, and optimization functionality.
+* [x] The Genetic Engine has undergone an initial experimental evaluation using different predefined configurations.
+* [x] The main architecture and Genetic Engine design decisions are documented.
+
+### Should Have
 
 The following are **Should Have success criteria** and therefore enhance, but do not determine, MVP completion:
 
 * [ ] The Work Shift Scheduling scenario is implemented and executed using the same Genetic Engine.
-* [ ] Additional generic constraints are available.
-* [ ] Genetic algorithm parameters can be configured through the UI.
+* [ ] Additional generic constraints are available when required beyond the current core catalogue.
+* [ ] Genetic Algorithm parameters can be configured through the UI.
 * [ ] Planning problems and generated schedules can be persisted.
 * [ ] Additional UX improvements are implemented.
 
@@ -462,17 +496,73 @@ Configure Problem
       ↓
 PlanningProblem
       ↓
+ProblemValidator
+      ↓
 Genetic Engine
       ↓
-PlanningResult
+OptimizationResult
       ↓
 Graphical Schedule
 ```
 
 Could Have functionality must only be considered after the MVP is complete and the remaining Should Have work has been evaluated against the available development time.
 
+---
 
-## 10. Future Extensions
+## 10. Current Implementation Status
+
+At the completion of the Genetic Engine milestone (M2), the following core capabilities are implemented:
+
+```text
+Generic Planning Domain
+        ↓
+Problem Validation
+        ↓
+Assignment Candidate Generation
+        ↓
+Genotype Encoding / Decoding
+        ↓
+Genetic Optimization
+        ↓
+Constraint Evaluation
+        ↓
+Fitness Evaluation
+        ↓
+OptimizationResult
+```
+
+M2 also provides:
+
+* HARD and SOFT constraint implementations.
+* FAST, BALANCED and EXHAUSTIVE Genetic Algorithm presets.
+* Deterministic execution through random seeds.
+* Automated Genetic Engine tests.
+* Reusable planning datasets for testing.
+* Initial experimental validation of the Genetic Engine.
+
+The next milestone, **M3 — Functional MVP**, focuses on integrating these capabilities into the complete application workflow:
+
+```text
+Planner
+    ↓
+Web Interface
+    ↓
+Application / REST API
+    ↓
+PlanningProblem
+    ↓
+Genetic Engine
+    ↓
+OptimizationResult
+    ↓
+Schedule Visualization
+```
+
+The mandatory end-to-end Academic Scheduling workflow remains the primary objective of M3.
+
+---
+
+## 11. Future Extensions
 
 Although not part of the MVP, the architecture should facilitate future improvements such as:
 

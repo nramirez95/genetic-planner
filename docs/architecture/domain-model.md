@@ -2,9 +2,11 @@
 
 ## 1. Purpose
 
-This document defines the generic domain model used by **Genetic Planner**.
+This document describes the generic domain model implemented by
+**Genetic Planner**.
 
-The objective of the model is to represent different planning and scheduling problems using the same set of domain concepts, independently of whether the problem represents:
+The model represents different planning and scheduling problems using the
+same domain concepts, independently of whether the problem represents:
 
 * Academic timetables.
 * Work shifts.
@@ -14,24 +16,30 @@ The objective of the model is to represent different planning and scheduling pro
 
 The model acts as the contract between:
 
-* The graphical user interface.
 * Planning templates.
 * The application layer.
-* The constraint evaluation system.
+* Problem validation.
+* Assignment candidate generation.
+* Constraint evaluation.
 * The Genetic Engine.
-* Persistence.
+* Persistence adapters.
 
-The Genetic Engine must operate exclusively on this generic model and must not contain domain-specific concepts such as `Teacher`, `Employee`, `Subject`, `StudentGroup`, or `WorkShift`.
+The Genetic Engine operates exclusively on this generic model and must
+not contain domain-specific concepts such as `Teacher`, `Employee`,
+`Subject`, `StudentGroup`, or `WorkShift`.
+
+The central architectural principle is:
+
+> **Genericity belongs to the domain model and Genetic Engine;
+> specificity belongs to templates and user experience.**
 
 ---
 
 ## 2. Design Principles
 
-The domain model follows the principles below.
-
 ### 2.1 Domain Independence
 
-The core model must not depend on any particular planning scenario.
+The core model does not depend on any particular planning scenario.
 
 For example:
 
@@ -56,119 +64,160 @@ Work area        ────→ Location
 Shift period     ────→ TimeSlot
 ```
 
-Both scenarios must ultimately create the same type of `PlanningProblem`.
+Both scenarios ultimately produce the same `PlanningProblem`.
 
 ---
 
 ### 2.2 Explicit Scheduling Concepts
 
-The model must explicitly represent the concepts required by the optimization process:
+The model explicitly represents the concepts required by optimization:
 
 * What must be scheduled.
 * When it can be scheduled.
-* Which resources participate.
-* Where it takes place.
-* Which rules must be satisfied.
+* Which Resources participate.
+* Where an Activity takes place.
+* Which Resource requirements must be satisfied.
+* Which rules apply to the Schedule.
+
+Scheduling concepts required by the Genetic Engine must be represented
+explicitly rather than hidden inside arbitrary metadata.
 
 ---
 
-### 2.3 Structural Validity vs Optimization Quality
+### 2.3 Structural Validation vs Planning Quality
 
-The domain model is responsible for guaranteeing that a planning problem is structurally valid.
+Domain objects represent planning data but do not enforce all structural
+rules through constructor-level validation.
 
-Examples include:
+Structural validation is performed by `ProblemValidator` before a
+planning problem reaches optimization.
 
-* References point to existing entities.
-* Time slots contain valid start and end times.
-* IDs are unique.
-* Activities define valid resource requirements.
+Examples of structural problems include:
 
-Planning quality is handled separately through constraints and fitness evaluation.
+* Duplicate identifiers.
+* References to unknown entities.
+* Invalid planning horizons.
+* Invalid TimeSlots.
+* Invalid Resource requirements.
+* Activities with no possible TimeSlot.
+
+Planning quality and Schedule feasibility are evaluated separately
+through constraints.
 
 For example:
 
-> Two activities assigned to the same teacher at the same time
+```text
+Two Activities assigned to the same Resource
+during overlapping TimeSlots
+```
 
-is not a structural error in the domain model.
+is not a malformed `PlanningProblem`.
 
-It is a `NoOverlap` constraint violation.
+It is a:
+
+```text
+NoOverlapConstraint
+→ HARD violation
+```
+
+The separation is:
+
+```text
+PlanningProblem
+      │
+      ▼
+ProblemValidator
+      │
+      ├── structurally invalid
+      │
+      └── structurally valid
+              │
+              ▼
+       Genetic Engine
+              │
+              ▼
+           Schedule
+              │
+              ▼
+      ConstraintEvaluator
+```
 
 ---
 
-### 2.4 Extensibility
+### 2.4 Framework Independence
 
-The model should make it possible to introduce:
+The domain model remains independent from:
 
-* New resource categories.
-* New activity types.
-* New location types.
-* New constraints.
-* New planning templates.
+```text
+Spring
+JPA
+PostgreSQL
+REST
+React
+Jenetics
+```
 
-without modifying the core Genetic Engine.
+Framework-specific representations belong to their corresponding
+application, API, persistence, or genetic adaptation layers.
 
 ---
 
-### 2.5 MVP Simplicity
-
-The first version intentionally limits some scheduling concepts to keep the genetic representation manageable.
+### 2.5 MVP Scheduling Unit
 
 For the MVP:
 
-> **One Activity represents one schedulable unit and is assigned to exactly one TimeSlot.**
+> **One Activity represents one atomic schedulable unit and is assigned
+> to exactly one TimeSlot.**
 
-The duration of an activity is therefore represented by the duration of the selected `TimeSlot`.
+The duration of an Activity is therefore represented by the duration of
+its selected `TimeSlot`.
 
-Examples:
-
-```text
-Academic planning
-
-TimeSlot:
-Monday 09:00 → 10:00
-
-Activity:
-Mathematics 1A
-```
+For example:
 
 ```text
-Work shift planning
-
-TimeSlot:
-Monday 08:00 → 16:00
+Academic:
 
 Activity:
-Reception Morning Shift
+    Mathematics 1A — Session 1
+
+TimeSlot:
+    Monday 09:00–10:00
 ```
 
-Multi-slot activities may be considered as a future extension.
+or:
+
+```text
+Work Shift:
+
+Activity:
+    Reception Morning Shift
+
+TimeSlot:
+    Monday 08:00–16:00
+```
+
+Activities spanning multiple TimeSlots are outside the current MVP.
 
 ---
 
-# 3. Domain Overview
+## 3. Domain Overview
 
-The main domain structure is:
+The core domain structure is:
 
 ```text
 PlanningProblem
 │
 ├── PlanningHorizon
-│
 ├── ResourceTypes
-│
 ├── Resources
-│
 ├── Activities
-│   └── ResourceRequirements
-│
+│     └── ResourceRequirements
 ├── TimeSlots
-│
 ├── Locations
-│
 └── Constraints
         │
         ▼
-   Genetic Engine
+  Genetic Engine
         │
         ▼
      Schedule
@@ -176,9 +225,12 @@ PlanningProblem
         └── Assignments
 ```
 
-A `PlanningProblem` describes everything necessary to generate a schedule.
+A `PlanningProblem` describes the problem to solve.
 
-A `Schedule` represents one candidate or final solution for that problem.
+A `Schedule` represents one candidate or final solution.
+
+Optimization metadata is represented separately through
+`OptimizationResult`.
 
 ---
 
@@ -188,102 +240,112 @@ A `Schedule` represents one candidate or final solution for that problem.
 
 `PlanningProblem` is the root object of the planning domain.
 
-It contains all information required by the Genetic Engine to produce a schedule.
-
-Conceptually:
+The implemented model is:
 
 ```kotlin
 data class PlanningProblem(
     val id: String,
     val name: String,
-    val templateType: String?,
+    val templateType: String? = null,
     val planningHorizon: PlanningHorizon,
-    val resourceTypes: List<ResourceType>,
-    val resources: List<Resource>,
-    val activities: List<Activity>,
-    val timeSlots: List<TimeSlot>,
-    val locations: List<Location>,
-    val constraints: List<Constraint>
+    val resourceTypes: List<ResourceType> = emptyList(),
+    val resources: List<Resource> = emptyList(),
+    val activities: List<Activity> = emptyList(),
+    val timeSlots: List<TimeSlot> = emptyList(),
+    val locations: List<Location> = emptyList(),
+    val constraints: List<Constraint> = emptyList()
 )
 ```
 
-This is a conceptual definition. Persistence annotations, API DTOs, and framework-specific code must not form part of the domain model.
+Persistence annotations, API DTOs, and framework-specific code do not
+form part of this model.
 
 ---
 
-## 4.2 Attributes
+## 4.2 Identifiers
 
-### `id`
+All domain identifiers use:
 
-Unique identifier of the planning problem.
-
-### `name`
-
-Human-readable name.
-
-Examples:
-
-```text
-Secondary School Weekly Timetable
-September Reception Shifts
-Computer Science Department Schedule
+```kotlin
+String
 ```
 
-### `templateType`
+IDs are treated as opaque identifiers.
 
-Optional identifier indicating which template was used to create the problem.
+The domain must not interpret prefixes, formatting, or semantic content
+inside an ID.
+
+For example:
+
+```text
+teacher-ana
+resource-1
+550e8400-e29b-41d4-a716-446655440000
+```
+
+may all be valid identifiers from the perspective of the core model.
+
+Readable identifiers are particularly useful in tests and experimental
+datasets, while production layers may use UUID-like values.
+
+Using `String` keeps the domain independent from persistence-specific ID
+strategies.
+
+---
+
+## 4.3 Collections
+
+`PlanningProblem` uses `List` collections.
+
+This preserves stable ordering, which is useful for:
+
+* Genetic encoding.
+* Candidate generation.
+* Serialization.
+* Testing.
+* Reproducibility.
+
+Identifier uniqueness is checked by `ProblemValidator` rather than being
+implicitly enforced through `Set` collections.
+
+---
+
+## 4.4 templateType
+
+`templateType` optionally identifies the template used to create the
+problem.
 
 Examples:
 
 ```text
 ACADEMIC
 WORK_SHIFT
-CUSTOM
 ```
 
-This value exists for application and UI purposes.
+It exists for application, persistence, and UI purposes.
 
-The Genetic Engine must not use `templateType` to change its behaviour.
+The Genetic Engine must never branch on:
 
-### `planningHorizon`
+```kotlin
+problem.templateType
+```
 
-Defines the time range represented by the planning problem.
+For example, logic such as:
 
-### `resourceTypes`
+```kotlin
+if (problem.templateType == "ACADEMIC") {
+    // academic-specific genetic behaviour
+}
+```
 
-Defines the categories of resources available in the problem.
-
-### `resources`
-
-All resources that may participate in the schedule.
-
-### `activities`
-
-All schedulable units that must be assigned.
-
-### `timeSlots`
-
-Available periods where activities may be scheduled.
-
-### `locations`
-
-Available locations.
-
-Locations are optional at problem level. A planning problem may contain no locations.
-
-### `constraints`
-
-Rules used to evaluate schedule validity and quality.
+is prohibited.
 
 ---
 
 # 5. PlanningHorizon
 
-## 5.1 Responsibility
-
-Represents the temporal boundaries of the planning problem.
-
-Conceptually:
+`PlanningHorizon` represents the temporal boundaries of a planning
+problem.
 
 ```kotlin
 data class PlanningHorizon(
@@ -292,44 +354,28 @@ data class PlanningHorizon(
 )
 ```
 
----
-
-## 5.2 Examples
-
-Academic weekly timetable:
+The valid relationship is:
 
 ```text
-Start: 2026-09-14 08:00
-End:   2026-09-18 15:00
+start < end
 ```
 
-Work schedule:
+This is checked by `ProblemValidator`.
 
-```text
-Start: 2026-09-14 00:00
-End:   2026-09-20 23:59
-```
-
-Using real date/time values rather than an abstract `MONDAY / TUESDAY` representation gives the model enough flexibility to support:
+Using `LocalDateTime` allows the model to represent:
 
 * Weekly schedules.
 * Concrete calendar periods.
+* Multi-day planning.
 * Multi-week planning.
-* Future school calendars.
 
-The UI may still present the information as a weekly calendar.
+Time zones are outside the current MVP.
 
 ---
 
 # 6. ResourceType
 
-## 6.1 Responsibility
-
-A `ResourceType` identifies a category of resources.
-
-It prevents domain-specific types from being hard-coded into the Genetic Engine.
-
-Conceptually:
+A `ResourceType` identifies a generic category of Resources.
 
 ```kotlin
 data class ResourceType(
@@ -338,174 +384,230 @@ data class ResourceType(
 )
 ```
 
----
-
-## 6.2 Examples
-
-Academic template:
+Examples include:
 
 ```text
-TEACHER
-STUDENT_GROUP
+Academic:
+    TEACHER
+    STUDENT_GROUP
+
+Work Shift:
+    EMPLOYEE
+
+Future:
+    VEHICLE
+    MACHINE
+    EQUIPMENT
 ```
 
-Work Shift template:
+`ResourceType` is deliberately represented as data rather than an enum.
 
-```text
-EMPLOYEE
-```
-
-Future templates could introduce:
-
-```text
-VEHICLE
-MACHINE
-MEDICAL_STAFF
-EQUIPMENT
-```
-
-without modifying the domain model.
+This allows templates to introduce Resource categories without modifying
+the domain model or Genetic Engine.
 
 ---
 
 # 7. Resource
 
-## 7.1 Responsibility
-
-A `Resource` represents an entity that can participate in an activity.
-
-A resource is not assumed to be a person.
-
-Conceptually:
+A `Resource` represents an entity that can participate in an Activity.
 
 ```kotlin
 data class Resource(
     val id: String,
     val name: String,
     val typeId: String,
-    val attributes: Map<String, String>
+    val attributes: Map<String, String> = emptyMap()
 )
 ```
 
----
+A Resource is not assumed to represent a person.
 
-## 7.2 Attributes
-
-### `id`
-
-Unique identifier.
-
-### `name`
-
-Human-readable name.
-
-### `typeId`
-
-Reference to its `ResourceType`.
-
-### `attributes`
-
-Optional extensible metadata associated with the resource.
-
-Examples:
-
-Academic:
+Examples include:
 
 ```text
-Resource:
-    id: teacher-ana
-    name: Ana
-    type: TEACHER
-
-attributes:
-    department: Mathematics
+Teacher
+Employee
+Student group
+Machine
+Vehicle
+Equipment
 ```
 
-Work:
-
-```text
-Resource:
-    id: employee-laura
-    name: Laura
-    type: EMPLOYEE
-
-attributes:
-    department: Reception
-```
+`typeId` references a `ResourceType`.
 
 ---
 
-## 7.3 Design Decision
+## 7.1 Attributes
 
-Availability must **not** be stored directly inside `Resource`.
+`attributes` provides optional template-specific metadata.
 
 For example:
 
 ```text
-Ana unavailable Monday 08:00
+department = Mathematics
 ```
 
-is a scheduling rule and therefore belongs to:
+Metadata must not become a substitute for explicit scheduling concepts.
+
+> If information is required by the Genetic Engine, candidate
+> generation, or constraint evaluation, it should normally be modeled
+> explicitly rather than hidden in `attributes`.
+
+---
+
+## 7.2 Availability
+
+Availability is deliberately not stored directly inside `Resource`.
+
+For example:
+
+```text
+Ana is unavailable Monday 09:00
+```
+
+is a planning rule represented by:
 
 ```text
 AvailabilityConstraint
 ```
 
-This keeps the resource definition independent from individual planning executions.
+This keeps Resource data separate from planning policy.
 
 ---
 
 # 8. Activity
 
-## 8.1 Responsibility
+An `Activity` represents one atomic schedulable unit.
 
-An `Activity` represents the fundamental unit that must be scheduled.
-
-Each activity must eventually produce one `Assignment`.
-
-Conceptually:
+The implemented model is:
 
 ```kotlin
 data class Activity(
     val id: String,
     val name: String,
-    val type: String?,
+    val type: String? = null,
     val resourceRequirements: List<ResourceRequirement>,
-    val allowedTimeSlotIds: Set<String>?,
-    val allowedLocationIds: Set<String>?,
-    val attributes: Map<String, String>
+    val allowedTimeSlotIds: Set<String>? = null,
+    val allowedLocationIds: Set<String>? = null,
+    val requiredLocationCapacity: Int? = null,
+    val attributes: Map<String, String> = emptyMap()
 )
 ```
 
----
-
-## 8.2 Examples
-
-Academic:
-
-```text
-Mathematics 1A — Monday session
-English 2B — Session 1
-Physics Laboratory — Session 2
-```
-
-Work:
-
-```text
-Monday Morning Reception
-Monday Afternoon Support
-Tuesday Morning Reception
-```
+Each Activity produces exactly one Assignment in a complete Schedule.
 
 ---
 
-## 8.3 Activity Occurrences
+## 8.1 type
 
-> Repeated activities are represented as separate schedulable Activity instances.
+`type` provides optional classification metadata.
 
-The genetic engine operates on atomic scheduling decisions. Representing each occurrence as an independent Activity preserves a one-to-one correspondence between activities and genetic decisions, keeping genotype encoding, candidate generation, mutation, crossover and constraint evaluation simple and generic. Recurrence remains a template-level concept: templates may expand a user-defined recurring activity into multiple schedulable activities. If relationships between those occurrences are required, they can be represented through grouping metadata and dedicated constraints without introducing recurrence semantics into the genetic core.
+It is currently represented as:
 
-For example, if Mathematics 1A must occur three times per week:
+```kotlin
+String?
+```
+
+rather than introducing a separate `ActivityType`.
+
+No current Genetic Engine behaviour depends on an Activity type, so a
+dedicated domain abstraction would add unnecessary complexity.
+
+---
+
+## 8.2 Allowed TimeSlots
+
+`allowedTimeSlotIds` restricts the TimeSlots that may be considered for
+an Activity.
+
+Its semantics are:
+
+```text
+null
+→ unrestricted
+→ all valid TimeSlots may be considered
+
+emptySet()
+→ explicitly none
+→ Activity has no possible TimeSlot
+
+non-empty set
+→ only referenced TimeSlots may be considered
+```
+
+Unknown references are reported by `ProblemValidator`.
+
+An Activity with no possible valid TimeSlot is structurally invalid.
+
+---
+
+## 8.3 Allowed Locations
+
+`allowedLocationIds` restricts the Locations that may be selected.
+
+Its semantics follow the same nullable-set convention:
+
+```text
+null
+→ unrestricted
+
+emptySet()
+→ explicitly no allowed Locations
+
+non-empty set
+→ only referenced Locations may be selected
+```
+
+Locations themselves remain optional in the generic model.
+
+---
+
+## 8.4 Required Location Capacity
+
+An Activity may define:
+
+```kotlin
+requiredLocationCapacity: Int?
+```
+
+This expresses the capacity required from a selected Location.
+
+For example:
+
+```text
+Activity:
+    Physics Lecture
+
+requiredLocationCapacity:
+    30
+```
+
+may be assigned to:
+
+```text
+Location:
+    Auditorium
+
+capacity:
+    50
+```
+
+Capacity sufficiency is evaluated by:
+
+```text
+LocationCapacityConstraint
+```
+
+The Activity stores the requirement and the Location stores its
+intrinsic capacity.
+
+---
+
+## 8.5 Repeated Activities
+
+Repeated activities are represented as separate Activity instances.
+
+For example, if Mathematics 1A occurs three times:
 
 ```text
 math-1a-session-1
@@ -520,97 +622,40 @@ Mathematics 1A
 occurrences = 3
 ```
 
-Planning templates may automatically create these activity instances for the user.
+This preserves:
 
-This significantly simplifies:
+> **One Activity = one genetic scheduling decision.**
 
-* Genetic encoding.
-* Assignment generation.
+It simplifies:
+
+* Candidate generation.
+* Genotype encoding.
 * Mutation.
 * Crossover.
 * Constraint evaluation.
 
-A higher-level recurring activity model can be introduced later if necessary.
+Recurrence remains a template-level concept.
+
+Templates may expand one user-facing recurring definition into multiple
+Activities.
 
 ---
 
 # 9. ResourceRequirement
 
-## 9.1 Responsibility
-
-Defines which kinds of resources an activity requires.
-
-This concept allows an activity to request resources without introducing domain-specific fields.
-
-Conceptually:
+`ResourceRequirement` describes the Resources required by an Activity.
 
 ```kotlin
 data class ResourceRequirement(
     val id: String,
     val resourceTypeId: String,
-    val quantity: Int,
-    val candidateResourceIds: Set<String>?
+    val quantity: Int = 1,
+    val candidateResourceIds: Set<String>? = null
 )
 ```
 
----
-
-## 9.2 Examples
-
-### Academic Activity
-
-Mathematics 1A may require:
-
-```text
-Requirement 1
-
-Type: TEACHER
-Quantity: 1
-Candidates:
-    teacher-ana
-```
-
-and:
-
-```text
-Requirement 2
-
-Type: STUDENT_GROUP
-Quantity: 1
-Candidates:
-    group-1a
-```
-
-The first requirement therefore fixes Ana as the teacher.
-
-The second fixes Group 1A.
-
----
-
-### Work Shift Activity
-
-Reception Monday Morning:
-
-```text
-Requirement
-
-Type: EMPLOYEE
-Quantity: 1
-
-Candidates:
-    ana
-    laura
-    pedro
-    carlos
-```
-
-The Genetic Engine decides which candidate employee is assigned.
-
----
-
-## 9.3 Why ResourceRequirement Exists
-
-Without this abstraction, the model would require fields such as:
+The abstraction allows an Activity to request Resources without
+introducing fields such as:
 
 ```text
 teacherId
@@ -618,80 +663,198 @@ employeeId
 studentGroupId
 ```
 
-which would destroy domain independence.
+---
 
-`ResourceRequirement` gives the Genetic Engine a generic question:
+## 9.1 Requirement Identity
 
-> Which resources satisfying this requirement should be assigned to this activity?
+Each requirement has its own `id`.
+
+This identifier is important because Assignment uses:
+
+```kotlin
+Map<String, List<String>>
+```
+
+where the key is:
+
+```text
+ResourceRequirement.id
+```
+
+Therefore:
+
+```text
+ResourceRequirement
+        │
+        │ id
+        ▼
+Assignment.resourceAssignments
+```
+
+Requirements must have unique IDs within their Activity.
+
+---
+
+## 9.2 Quantity
+
+`quantity` represents the exact number of distinct Resources required.
+
+For example:
+
+```text
+quantity = 2
+```
+
+is satisfied by:
+
+```text
+[worker-1, worker-2]
+```
+
+but not by:
+
+```text
+[worker-1]
+```
+
+or:
+
+```text
+[worker-1, worker-1]
+```
+
+or:
+
+```text
+[worker-1, worker-2, worker-3]
+```
+
+`ProblemValidator` requires:
+
+```text
+quantity >= 1
+```
+
+---
+
+## 9.3 Candidate Resources
+
+`candidateResourceIds` optionally restricts which Resources may satisfy
+the requirement.
+
+Its semantics are:
+
+```text
+null
+→ unrestricted
+→ any compatible Resource of resourceTypeId may be considered
+
+emptySet()
+→ explicitly none
+→ the requirement cannot be satisfied
+
+non-empty set
+→ only those compatible Resources may be considered
+```
+
+This distinction is important.
+
+`null` and `emptySet()` do **not** mean the same thing.
+
+Candidate Resources must:
+
+* Exist.
+* Have the required ResourceType.
+* Provide at least `quantity` distinct candidates.
+
+These rules are checked by `ProblemValidator`.
+
+---
+
+## 9.4 Example
+
+An academic Activity may contain:
+
+```text
+Requirement:
+    id = teacher-requirement
+    resourceTypeId = TEACHER
+    quantity = 1
+    candidateResourceIds = [teacher-ana]
+```
+
+and:
+
+```text
+Requirement:
+    id = group-requirement
+    resourceTypeId = STUDENT_GROUP
+    quantity = 1
+    candidateResourceIds = [group-1a]
+```
+
+A Work Shift Activity may instead contain:
+
+```text
+Requirement:
+    id = worker-requirement
+    resourceTypeId = EMPLOYEE
+    quantity = 2
+    candidateResourceIds =
+        [employee-ana, employee-laura, employee-pedro]
+```
+
+The Genetic Engine handles both through the same abstraction.
 
 ---
 
 # 10. TimeSlot
 
-## 10.1 Responsibility
-
-Represents a valid temporal period in which an activity may be assigned.
-
-Conceptually:
+A `TimeSlot` represents a temporal period in which an Activity may be
+assigned.
 
 ```kotlin
 data class TimeSlot(
     val id: String,
     val start: LocalDateTime,
     val end: LocalDateTime,
-    val label: String?
+    val label: String? = null
 )
 ```
 
+A TimeSlot must satisfy:
+
+```text
+start < end
+```
+
+and must fall within the `PlanningHorizon`.
+
+These conditions are validated by `ProblemValidator`.
+
 ---
 
-## 10.2 Examples
+## 10.1 Different Durations
 
+Genetic Planner does not require all TimeSlots to have equal duration.
+
+For example:
+
+```text
 Academic:
+09:00–10:00
 
-```text
-id: mon-09
-start: 2026-09-14 09:00
-end:   2026-09-14 10:00
-label: Monday 09:00–10:00
+Work Shift:
+08:00–16:00
 ```
 
-Work:
-
-```text
-id: mon-morning
-start: 2026-09-14 08:00
-end:   2026-09-14 16:00
-label: Monday Morning
-```
+are both valid representations.
 
 ---
 
-## 10.3 Why Time Slots May Have Different Durations
+## 10.2 Temporal Overlap
 
-Genetic Planner does not assume that every planning problem uses equal-length periods.
-
-Therefore:
-
-```text
-Academic TimeSlot = 1 hour
-```
-
-and:
-
-```text
-Work Shift TimeSlot = 8 hours
-```
-
-can coexist as different planning scenarios.
-
-Within one particular planning problem, templates should normally generate a coherent set of time slots.
-
----
-
-## 10.4 Temporal Overlap
-
-Two time slots overlap when:
+Two TimeSlots overlap when:
 
 ```text
 slotA.start < slotB.end
@@ -699,228 +862,202 @@ AND
 slotB.start < slotA.end
 ```
 
-This definition will later be used by constraints such as `NoOverlap`.
+Therefore:
+
+```text
+09:00–10:00
+10:00–11:00
+```
+
+do not overlap.
+
+This rule is used by `NoOverlapConstraint`.
 
 ---
 
 # 11. Location
 
-## 11.1 Responsibility
-
-Represents a physical or logical place where an activity may occur.
-
-Conceptually:
+A `Location` represents a physical or logical place where an Activity
+may occur.
 
 ```kotlin
 data class Location(
     val id: String,
     val name: String,
-    val type: String?,
-    val capacity: Int?,
-    val attributes: Map<String, String>
+    val type: String? = null,
+    val capacity: Int? = null,
+    val attributes: Map<String, String> = emptyMap()
 )
 ```
 
----
-
-## 11.2 Examples
-
-Academic:
+Examples include:
 
 ```text
-Classroom 101
-Laboratory 2
-Gymnasium
-```
-
-Work:
-
-```text
+Classroom
+Laboratory
 Reception
-Customer Support Area
-Building A
+Work area
+Virtual room
 ```
 
-Some planning scenarios may not require locations at all.
+Locations are optional.
+
+A PlanningProblem may contain no Locations and an Assignment may have:
+
+```kotlin
+locationId = null
+```
 
 ---
 
-## 11.3 Capacity
+## 11.1 Capacity
 
-`capacity` is included as optional domain data because it is an intrinsic property of many locations.
+`capacity` is intrinsic Location data.
 
-However:
-
-> Whether the capacity is sufficient for a particular activity is evaluated by a constraint.
-
-Therefore:
+For example:
 
 ```text
-Location.capacity = 20
+Location.capacity = 30
 ```
 
-is domain data.
-
-While:
+The Activity may separately define:
 
 ```text
-Activity requires capacity >= 30
+Activity.requiredLocationCapacity = 40
 ```
 
-belongs to planning rules and constraint evaluation.
+Whether the selected Location satisfies that requirement is evaluated by:
+
+```text
+LocationCapacityConstraint
+```
+
+This preserves the separation between:
+
+```text
+domain data
+→ Location.capacity
+→ Activity.requiredLocationCapacity
+
+planning evaluation
+→ LocationCapacityConstraint
+```
 
 ---
 
 # 12. Constraint
 
-## 12.1 Responsibility
+A `PlanningProblem` contains the constraints applicable to that problem.
 
-Constraints define rules used to evaluate candidate schedules.
+The core abstraction is:
 
-Only its relationship with the domain model is defined here.
+```kotlin
+interface Constraint {
+    val id: String
+    val name: String
+    val type: ConstraintType
+    val weight: Double
 
-The detailed constraint architecture is specified separately in:
+    fun evaluate(schedule: Schedule): ConstraintResult
+}
+```
+
+The currently implemented catalogue is:
+
+```text
+HARD
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+├── RequiredResourceConstraint
+└── LocationCapacityConstraint
+
+SOFT
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint
+```
+
+Constraint details are documented separately in:
 
 ```text
 docs/architecture/constraints.md
+docs/architecture/constraint-catalogue.md
+docs/architecture/constraint-evaluation.md
 ```
-
-Conceptually:
-
-```text
-Constraint
-│
-├── HARD
-└── SOFT
-```
-
-Examples:
-
-```text
-NoOverlap
-Availability
-RequiredResource
-MaximumAssignments
-PreferredTimeSlot
-```
-
-A `PlanningProblem` contains the complete set of constraints applicable to that particular problem.
 
 ---
 
 # 13. Assignment
 
-## 13.1 Responsibility
-
-An `Assignment` represents the placement of one activity into the generated schedule.
-
-It connects:
-
-```text
-Activity
-   +
-TimeSlot
-   +
-Resources
-   +
-Location (optional)
-```
-
-Conceptually:
+An `Assignment` represents the scheduling decision produced for one
+Activity.
 
 ```kotlin
 data class Assignment(
     val activityId: String,
     val timeSlotId: String,
     val resourceAssignments: Map<String, List<String>>,
-    val locationId: String?
+    val locationId: String? = null
 )
 ```
 
-The key in `resourceAssignments` refers to a `ResourceRequirement.id`.
-
----
-
-## 13.2 Example — Academic
-
-Activity:
+It connects:
 
 ```text
-Mathematics 1A — Session 1
-```
-
-Assignment:
-
-```text
-Activity:
-    math-1a-session-1
-
-TimeSlot:
-    monday-09
-
-Resource assignments:
-    teacher-requirement → [teacher-ana]
-    group-requirement   → [group-1a]
-
-Location:
-    classroom-101
-```
-
-Rendered for the user:
-
-```text
-Monday 09:00–10:00
-
-Mathematics 1A
-Teacher: Ana
-Group: 1A
-Room: Classroom 101
+Activity
+    +
+TimeSlot
+    +
+Resources
+    +
+Location (optional)
 ```
 
 ---
 
-## 13.3 Example — Work Shift
+## 13.1 Resource Assignments
 
-Activity:
-
-```text
-Monday Morning Reception
-```
-
-Assignment:
+`resourceAssignments` maps:
 
 ```text
-Activity:
-    reception-monday-morning
-
-TimeSlot:
-    monday-morning
-
-Resource assignments:
-    employee-requirement → [employee-laura]
-
-Location:
-    reception
+ResourceRequirement.id
+        ↓
+List<Resource.id>
 ```
 
-Rendered:
+For example:
 
 ```text
-Monday 08:00–16:00
+teacher-requirement
+→ [teacher-ana]
 
-Reception
-Employee: Laura
+group-requirement
+→ [group-1a]
 ```
+
+Using requirement IDs allows an Activity to contain several independent
+Resource requirements, including multiple requirements for the same
+ResourceType.
+
+---
+
+## 13.2 No Assignment ID
+
+`Assignment` deliberately has no independent identifier in the core
+domain.
+
+For the current model, the relevant identity is the Activity being
+assigned.
+
+Persistence layers may introduce technical identifiers if required
+without exposing them to the domain model.
 
 ---
 
 # 14. Schedule
 
-## 14.1 Responsibility
-
-A `Schedule` represents one complete candidate solution to a `PlanningProblem`.
-
-Conceptually:
+A `Schedule` represents one candidate or final solution for a
+PlanningProblem.
 
 ```kotlin
 data class Schedule(
@@ -929,83 +1066,104 @@ data class Schedule(
 )
 ```
 
----
+`Schedule` contains scheduling decisions only.
 
-## 14.2 MVP Completeness Rule
-
-For the MVP:
-
-> Every Activity must have exactly one Assignment.
-
-Therefore:
+It does not contain:
 
 ```text
-number of Assignments = number of Activities
+fitness
+feasibility
+hardPenalty
+softPenalty
+constraintResults
+executionTime
+generation statistics
 ```
 
-A schedule may still violate hard constraints.
+Those values belong to optimization/evaluation models.
+
+---
+
+## 14.1 Complete Schedule
+
+For the current Genetic Engine:
+
+> **Every Activity must have exactly one Assignment.**
+
+Therefore, for a complete Schedule:
+
+```text
+number of Assignments
+=
+number of Activities
+```
+
+A complete Schedule may still be infeasible.
 
 For example:
 
 ```text
-Ana assigned to two simultaneous activities
+Activity A
+→ worker-1
+→ Monday 09:00
+
+Activity B
+→ worker-1
+→ Monday 09:00
 ```
 
-The schedule is structurally complete, but its fitness will contain a severe penalty.
+may be structurally complete but violate:
 
-This allows the Genetic Engine to evolve from poor schedules toward increasingly valid schedules.
+```text
+NoOverlapConstraint
+```
 
 ---
 
-## 14.3 Schedule vs PlanningResult
+## 14.2 Schedule vs OptimizationResult
 
-`Schedule` only represents the generated planning solution.
+`Schedule` represents the planning solution.
 
-Optimization metadata belongs to a separate `PlanningResult`.
+`OptimizationResult` represents the outcome of genetic optimization.
 
 Conceptually:
 
 ```text
-PlanningResult
+OptimizationResult
 │
 ├── Schedule
-├── Fitness
-├── Hard violations
-├── Soft violations
-├── Generations
-└── Execution time
+├── ScheduleEvaluation
+│     ├── fitness
+│     ├── feasible
+│     ├── hardPenalty
+│     ├── softPenalty
+│     └── constraintResults
+│
+├── generationsExecuted
+├── executionTime
+└── randomSeed
 ```
 
-Keeping these concepts separate prevents optimization-specific information from contaminating the core scheduling model.
+Keeping these models separate prevents optimization metadata from
+contaminating the scheduling domain.
 
 ---
 
 # 15. Entity Relationships
 
-The conceptual relationships are:
+The principal relationships are:
 
 ```text
 PlanningProblem
 │
-│ 1
-│
-├──────── 1 PlanningHorizon
-│
-├──────── * ResourceType
-│             │
-│             │ 1
-│             │
-├──────── * Resource
-│
-├──────── * Activity
-│             │
-│             └──────── * ResourceRequirement
-│
-├──────── * TimeSlot
-│
-├──────── * Location
-│
-└──────── * Constraint
+├── 1 PlanningHorizon
+├── * ResourceType
+├── * Resource
+├── * Activity
+│      └── * ResourceRequirement
+├── * TimeSlot
+├── * Location
+└── * Constraint
 
 
 PlanningProblem
@@ -1014,102 +1172,123 @@ PlanningProblem
       ▼
    Schedule
       │
-      └──────── * Assignment
-                     │
-                     ├── 1 Activity
-                     ├── 1 TimeSlot
-                     ├── * Resource
-                     └── 0..1 Location
+      └── * Assignment
+             ├── 1 Activity
+             ├── 1 TimeSlot
+             ├── * Resource
+             └── 0..1 Location
 ```
 
----
+The implementation uses IDs between these objects rather than direct
+object references.
 
-# 16. Domain Invariants
-
-The following invariants must hold before a `PlanningProblem` can be processed by the Genetic Engine.
-
-## 16.1 Identifier Integrity
-
-All entity IDs must be unique within their entity type.
-
-References must point to existing entities.
+This keeps the domain representation simple and facilitates candidate
+generation, serialization, testing, and persistence adaptation.
 
 ---
 
-## 16.2 Planning Horizon
+# 16. Domain Validation
+
+Structural validity is evaluated by:
 
 ```text
-planningHorizon.start < planningHorizon.end
+ProblemValidator
 ```
 
-All time slots must fall within the planning horizon.
+rather than through `require()` calls inside the domain data classes.
+
+This allows multiple validation problems to be collected and reported
+together.
+
+The current validation includes:
+
+* Identifier uniqueness.
+* Planning horizon validity.
+* TimeSlot validity.
+* ResourceType references.
+* ResourceRequirement quantity.
+* Candidate Resource existence.
+* Candidate Resource type compatibility.
+* Candidate Resource sufficiency.
+* Allowed TimeSlot references.
+* Allowed Location references.
+* Existence of at least one possible TimeSlot for every Activity.
 
 ---
 
-## 16.3 TimeSlot Validity
+## 16.1 Validation Errors
 
-Every time slot must satisfy:
+The implemented validation codes are:
+
+```kotlin
+enum class ValidationErrorCode {
+    DUPLICATE_ID,
+    INVALID_PLANNING_HORIZON,
+    INVALID_TIME_SLOT,
+    UNKNOWN_RESOURCE_TYPE,
+    UNKNOWN_CANDIDATE_RESOURCE,
+    CANDIDATE_RESOURCE_TYPE_MISMATCH,
+    INVALID_REQUIREMENT_QUANTITY,
+    INSUFFICIENT_CANDIDATE_RESOURCES,
+    UNKNOWN_TIME_SLOT,
+    UNKNOWN_LOCATION,
+    NO_POSSIBLE_TIME_SLOT
+}
+```
+
+Validation details are documented separately in the problem validation
+documentation.
+
+---
+
+## 16.2 Nullable Set Semantics
+
+The model consistently distinguishes:
 
 ```text
-start < end
+null
 ```
 
----
-
-## 16.4 Resource Integrity
-
-Every `Resource.typeId` must reference an existing `ResourceType`.
-
----
-
-## 16.5 Resource Requirement Integrity
-
-For each `ResourceRequirement`:
+from:
 
 ```text
-quantity >= 1
+emptySet()
 ```
 
-Candidate resources must:
+for allowed/candidate ID sets.
 
-* Exist.
-* Match the required `ResourceType`.
+The convention is:
 
-If the candidate set is empty or absent, all resources belonging to the required type may be considered candidates.
+```text
+null
+→ unrestricted
 
----
+emptySet()
+→ explicitly none
 
-## 16.6 Activity Integrity
+non-empty set
+→ explicitly restricted
+```
 
-Each activity must:
+This applies to:
 
-* Have a unique ID.
-* Reference valid resource requirements.
-* Reference only existing allowed time slots.
-* Reference only existing allowed locations.
+```text
+ResourceRequirement.candidateResourceIds
+Activity.allowedTimeSlotIds
+Activity.allowedLocationIds
+```
 
-At least one valid time slot must be available for every activity.
-
----
-
-## 16.7 Schedule Integrity
-
-Every assignment must:
-
-* Reference one existing activity.
-* Reference one existing time slot.
-* Reference only existing resources.
-* Reference an existing location when one is specified.
-
-Every activity must appear exactly once in the schedule.
-
-Every resource requirement must receive the expected number of resources.
+The distinction must be preserved by API, persistence, template, and
+candidate-generation layers.
 
 ---
 
-# 17. Structural Validation
+# 17. Candidate Generation Boundary
 
-Before starting genetic optimization, Genetic Planner should execute a validation phase.
+The domain model describes what may be scheduled.
+
+`AssignmentCandidateGenerator` transforms that information into concrete
+options that can be encoded genetically.
 
 Conceptually:
 
@@ -1117,290 +1296,239 @@ Conceptually:
 PlanningProblem
       │
       ▼
-ProblemValidator
+AssignmentCandidateGenerator
       │
-      ├── Invalid → Validation errors
+      ▼
+AssignmentCandidateGenerationResult
       │
-      └── Valid
-             │
-             ▼
-       Genetic Engine
+      ▼
+ScheduleGenotypeCodec
 ```
 
-Examples of validation errors:
+Candidate generation uses:
+
+* Activities.
+* ResourceRequirements.
+* Resources.
+* TimeSlots.
+* Locations.
+* Allowed IDs.
+
+It generates structurally possible Assignment options.
+
+It deliberately does not eliminate complete-Schedule constraint
+violations.
+
+For example, two individually valid Assignment options may use the same
+Resource at the same TimeSlot.
+
+That conflict is handled later by:
 
 ```text
-Activity "Mathematics 1A" has no available time slots.
-
-Resource requirement references unknown resource type "TEACHER".
-
-Time slot "monday-09" ends before it starts.
-
-Activity references unknown classroom "room-99".
+NoOverlapConstraint
 ```
 
-This prevents the Genetic Engine from attempting to solve structurally malformed problems.
+The architectural rule is:
+
+> **Structural candidate generation and planning constraint evaluation
+> are separate responsibilities.**
 
 ---
 
 # 18. Academic Scheduling Example
 
-Consider the following academic problem.
+Consider an academic PlanningProblem.
 
-## Resources
+### ResourceTypes
 
 ```text
 TEACHER
-    Ana
-    Pedro
-
 STUDENT_GROUP
-    1A
 ```
 
-## Locations
+### Resources
 
 ```text
-Classroom 101
-Classroom 102
+teacher-ana
+teacher-pedro
+group-1a
 ```
 
-## Time Slots
+### Locations
 
 ```text
-Monday 09:00–10:00
-Monday 10:00–11:00
-Tuesday 09:00–10:00
-Tuesday 10:00–11:00
+classroom-101
+    capacity = 30
+
+classroom-102
+    capacity = 20
 ```
 
-## Activities
+### TimeSlots
 
 ```text
-Mathematics 1A — Session 1
-Mathematics 1A — Session 2
-English 1A — Session 1
-English 1A — Session 2
+monday-09
+monday-10
+tuesday-09
+tuesday-10
 ```
 
-Mathematics requires:
+### Activities
 
 ```text
-Teacher candidate:
-    Ana
-
-Student group:
-    1A
+math-1a-session-1
+math-1a-session-2
+english-1a-session-1
+english-1a-session-2
 ```
 
-English requires:
+A Mathematics Activity may define:
 
 ```text
-Teacher candidate:
-    Pedro
+teacher requirement:
+    type = TEACHER
+    quantity = 1
+    candidates = [teacher-ana]
 
-Student group:
-    1A
+student group requirement:
+    type = STUDENT_GROUP
+    quantity = 1
+    candidates = [group-1a]
+
+requiredLocationCapacity = 25
 ```
 
-## Constraints
-
-Examples:
+Possible constraints include:
 
 ```text
-No resource overlap.
-
-Ana unavailable Tuesday 09:00.
-
-Pedro unavailable Monday 10:00.
-
-Prefer Mathematics before 11:00.
+NoOverlapConstraint
+AvailabilityConstraint
+RequiredResourceConstraint
+LocationCapacityConstraint
+PreferredTimeSlotConstraint
 ```
 
-## Possible Schedule
-
-```text
-Monday 09:00
-Mathematics 1A — Session 1
-Ana
-Group 1A
-Classroom 101
-
-Monday 10:00
-English 1A — Session 1
-Pedro
-Group 1A
-Classroom 102
-
-Tuesday 09:00
-English 1A — Session 2
-Pedro
-Group 1A
-Classroom 101
-
-Tuesday 10:00
-Mathematics 1A — Session 2
-Ana
-Group 1A
-Classroom 102
-```
-
-No academic-specific object is required by the Genetic Engine.
+No academic-specific class is required by the Genetic Engine.
 
 ---
 
 # 19. Work Shift Scheduling Example
 
-Consider the following work planning problem.
+The same model can represent a Work Shift problem.
 
-## Resources
+### ResourceType
 
 ```text
 EMPLOYEE
-    Ana
-    Laura
-    Pedro
 ```
 
-## Locations
+### Resources
 
 ```text
-Reception
-Support Desk
+employee-ana
+employee-laura
+employee-pedro
 ```
 
-## Time Slots
+### TimeSlots
 
 ```text
-Monday 08:00–16:00
-Monday 16:00–00:00
-Tuesday 08:00–16:00
-Tuesday 16:00–00:00
+monday-morning
+monday-afternoon
+tuesday-morning
+tuesday-afternoon
 ```
 
-## Activities
+### Activities
 
 ```text
-Monday Morning Reception
-Monday Afternoon Reception
-Tuesday Morning Reception
-Tuesday Afternoon Reception
+monday-morning-reception
+monday-afternoon-reception
+tuesday-morning-reception
+tuesday-afternoon-reception
 ```
 
-Each activity contains:
+A Reception Activity may define:
 
 ```text
-ResourceRequirement
-
-type:
-    EMPLOYEE
-
-quantity:
-    1
-
-candidates:
-    Ana
-    Laura
-    Pedro
+ResourceRequirement:
+    resourceTypeId = EMPLOYEE
+    quantity = 1
+    candidateResourceIds =
+        [employee-ana, employee-laura, employee-pedro]
 ```
 
-## Constraints
+Possible constraints include:
 
 ```text
-No employee overlap.
-
-Ana unavailable Monday morning.
-
-Laura prefers morning periods.
-
-Maximum assignments per employee: 2.
+NoOverlapConstraint
+AvailabilityConstraint
+RequiredResourceConstraint
+PreferredTimeSlotConstraint
+MaxConsecutiveConstraint
+BalancedWorkloadConstraint
 ```
 
-## Possible Schedule
-
-```text
-Monday 08:00–16:00
-Reception
-Laura
-
-Monday 16:00–00:00
-Reception
-Pedro
-
-Tuesday 08:00–16:00
-Reception
-Ana
-
-Tuesday 16:00–00:00
-Reception
-Pedro
-```
-
-Again, the Genetic Engine receives exactly the same domain concepts as in the academic scenario.
+Again, the Genetic Engine receives exactly the same domain concepts.
 
 ---
 
-# 20. Mapping Through Planning Templates
+# 20. Planning Templates
 
-Planning templates are responsible for translating user-friendly domain concepts into the generic model.
+Planning templates translate user-friendly domain concepts into the
+generic model.
+
+For Academic Scheduling:
 
 ```text
 Academic UI
-
-Teacher
-Subject
-Group
-Classroom
-Teaching period
-
-        │
-        ▼
-
-AcademicTemplate
-
-        │
-        ▼
-
-PlanningProblem
+    │
+    ├── Teacher
+    ├── Subject
+    ├── Student Group
+    ├── Classroom
+    └── Teaching Period
+            │
+            ▼
+     Academic Template
+            │
+            ▼
+      PlanningProblem
 ```
 
-Likewise:
+For Work Shift Scheduling:
 
 ```text
 Work Shift UI
-
-Employee
-Shift
-Work area
-Availability
-
-        │
-        ▼
-
-WorkShiftTemplate
-
-        │
-        ▼
-
-PlanningProblem
+    │
+    ├── Employee
+    ├── Work Assignment
+    ├── Work Area
+    └── Work Period
+            │
+            ▼
+      Work Shift Template
+            │
+            ▼
+       PlanningProblem
 ```
 
-Templates may therefore provide:
+Templates may provide:
 
 * Friendly terminology.
-* Default resource types.
+* Default ResourceTypes.
 * Default constraints.
-* Default time slot structures.
+* Default TimeSlot structures.
 * Domain-specific forms.
-* Data transformation.
+* Conversion from recurring user concepts into atomic Activities.
 
-They must not alter the Genetic Engine.
+Templates must not modify Genetic Engine behaviour.
 
 ---
 
-# 21. Domain Model and Genetic Engine Boundary
+# 21. Domain and Genetic Engine Boundary
 
-The intended dependency direction is:
+The dependency direction is:
 
 ```text
 User Interface
@@ -1412,27 +1540,39 @@ Planning Template
 PlanningProblem
       │
       ▼
+ProblemValidator
+      │
+      ▼
 Genetic Engine
       │
       ▼
-Schedule
+OptimizationResult
 ```
 
-The Genetic Engine is allowed to know about:
+Internally:
 
 ```text
 PlanningProblem
-Activity
-ResourceRequirement
-Resource
-TimeSlot
-Location
-Constraint
-Assignment
+      │
+      ▼
+AssignmentCandidateGenerator
+      │
+      ▼
+ScheduleGenotypeCodec
+      │
+      ▼
+Jenetics
+      │
+      ▼
 Schedule
+      │
+      ▼
+ConstraintEvaluator
 ```
 
-It must not know about:
+The Genetic Engine may depend on generic domain concepts.
+
+It must not contain domain-specific concepts such as:
 
 ```text
 Teacher
@@ -1442,19 +1582,23 @@ Subject
 WorkShift
 AcademicTemplate
 WorkShiftTemplate
-React
-REST
-PostgreSQL
-Spring Boot
+```
+
+The domain itself must not depend on Jenetics.
+
+The adaptation belongs to:
+
+```text
+genetic.codec
 ```
 
 ---
 
-# 22. Domain Model and Persistence Boundary
+# 22. Persistence Boundary
 
-Domain classes should initially remain independent from persistence technology.
+Domain classes remain independent from persistence technology.
 
-Therefore, the domain model should not require concepts such as:
+The domain does not require:
 
 ```text
 @Entity
@@ -1463,138 +1607,164 @@ Therefore, the domain model should not require concepts such as:
 @OneToMany
 ```
 
-Persistence concerns may be represented through separate persistence entities or adapters where necessary.
+Persistence concerns belong to separate persistence representations or
+adapters.
 
-The dependency direction should remain:
+The intended dependency direction is:
 
 ```text
-Persistence
-     │
-     ▼
-Domain Model
+Persistence Adapter
+        │
+        ▼
+   Domain Model
 ```
 
 rather than:
 
 ```text
 Domain Model
-     │
-     ▼
-PostgreSQL / JPA
+        │
+        ▼
+JPA / PostgreSQL
 ```
 
-This also makes Genetic Engine unit testing substantially easier.
+This also allows the Genetic Engine and domain model to be tested without
+a database.
 
 ---
 
 # 23. Key Design Decisions
 
-## D1 — Generic Resources
+### D1 — Generic Resources
 
-Teachers, employees, student groups, machines, and similar entities are represented using the same `Resource` abstraction.
+Teachers, employees, student groups, machines, and similar entities use
+the same `Resource` abstraction.
 
 **Reason:** preserve domain independence.
 
+### D2 — Resource Types Are Data
+
+Resource categories use `ResourceType` rather than a domain-specific
+enum.
+
+**Reason:** templates can introduce new categories without modifying the
+Genetic Engine.
+
+### D3 — String IDs Are Opaque
+
+All domain references use `String` identifiers.
+
+**Reason:** keep domain identity independent from persistence and support
+readable tests and datasets.
+
+### D4 — Lists Preserve Stable Order
+
+PlanningProblem collections use `List`.
+
+**Reason:** stable ordering is useful for genetic encoding,
+serialization, testing, and reproducibility.
+
+### D5 — Activities Are Atomic
+
+Each Activity represents one scheduling decision and produces exactly
+one Assignment.
+
+Repeated activities are expanded into separate Activities.
+
+**Reason:** simplify candidate generation and genetic representation.
+
+### D6 — One Activity Uses One TimeSlot
+
+Activities do not span multiple TimeSlots in the MVP.
+
+**Reason:** keep the genetic representation manageable while supporting
+different Activity durations through different TimeSlot durations.
+
+### D7 — Time Uses LocalDateTime
+
+Planning horizons and TimeSlots use concrete date/time values.
+
+**Reason:** support different planning periods without introducing
+time-zone complexity in the MVP.
+
+### D8 — Resource Requirements Are Generic
+
+`ResourceRequirement` describes the type, quantity, and optional
+candidate Resources required by an Activity.
+
+**Reason:** avoid domain-specific assignment fields.
+
+### D9 — Null and Empty Sets Are Different
+
+For candidate and allowed ID sets:
+
+```text
+null = unrestricted
+empty = explicitly none
+```
+
+**Reason:** preserve an important distinction between absence of a
+restriction and an impossible configuration.
+
+### D10 — Locations Are Optional
+
+A planning scenario does not need to use Locations.
+
+**Reason:** avoid forcing irrelevant concepts into every domain.
+
+### D11 — Capacity Is Explicit
+
+Location capacity and Activity capacity requirements are explicit domain
+properties.
+
+**Reason:** capacity is used by core planning behaviour and should not be
+hidden inside arbitrary attributes.
+
+### D12 — Availability Is a Constraint
+
+Availability does not belong to Resource.
+
+**Reason:** separate intrinsic Resource data from planning rules.
+
+### D13 — Attributes Are Metadata Only
+
+`attributes` supports optional template metadata.
+
+**Reason:** provide limited extensibility without turning the domain into
+an untyped property model.
+
+Core optimization behaviour must not depend on hidden metadata.
+
+### D14 — Domain Objects Do Not Perform Aggregate Validation
+
+Structural validation belongs to `ProblemValidator`.
+
+**Reason:** validation errors can be collected and reported together
+instead of failing during object construction.
+
+### D15 — Schedule and OptimizationResult Are Separate
+
+`Schedule` contains planning decisions.
+
+`OptimizationResult` contains evaluation and execution information.
+
+**Reason:** keep the scheduling solution independent from the process
+that generated it.
+
+### D16 — Domain Is Independent from Jenetics
+
+No Jenetics types appear in the domain model.
+
+**Reason:** genetic representation is an adapter concern rather than a
+domain concern.
+
 ---
 
-## D2 — Resource Types Are Configurable
+# 24. Implemented Kotlin Model
 
-Resource categories are data rather than hard-coded classes.
-
-**Reason:** new planning scenarios can define new resource categories without modifying the Genetic Engine.
-
----
-
-## D3 — Activities Are Atomic Scheduling Units
-
-Each `Activity` must be assigned exactly once.
-
-Repeated activities are expanded into multiple activities.
-
-**Reason:** greatly simplifies the genetic representation and operators.
-
----
-
-## D4 — One Activity Uses One TimeSlot
-
-Activities do not span several time slots in the MVP.
-
-A time slot itself may have any duration.
-
-**Reason:** supports both hourly lessons and long work shifts while keeping chromosomes manageable.
-
----
-
-## D5 — Time Uses Concrete Date/Time Values
-
-Time slots use start and end timestamps.
-
-**Reason:** supports both weekly planning and future calendar-based planning scenarios.
-
----
-
-## D6 — Resources Required by Activities Are Generic
-
-`ResourceRequirement` replaces concepts such as teacher assignment or employee assignment.
-
-**Reason:** allows both fixed and selectable resources without domain-specific fields.
-
----
-
-## D7 — Locations Are Optional
-
-Not every planning scenario requires physical locations.
-
-**Reason:** maintain flexibility without forcing meaningless data.
-
----
-
-## D8 — Constraints Are Separate From Entities
-
-Availability, overlap, assignment limits, and preferences are represented through constraints.
-
-**Reason:** separate domain data from optimization policy.
-
----
-
-## D9 — Attributes Support Limited Extensibility
-
-Resources, activities, and locations may contain additional key/value attributes.
-
-**Reason:** templates may need metadata that does not justify changing the generic model.
-
-Core optimization logic must not rely extensively on arbitrary attributes. Important scheduling concepts should be represented explicitly or through constraints.
-
----
-
-## D10 — Schedule and PlanningResult Are Different Concepts
-
-`Schedule` contains assignments.
-
-`PlanningResult` contains optimization metrics.
-
-**Reason:** keep scheduling data independent from the optimization process that generated it.
-
----
-
-# 24. Initial Conceptual Kotlin Model
-
-The first implementation is expected to resemble the following structure:
+The current core model is:
 
 ```kotlin
-data class PlanningProblem(
-    val id: String,
-    val name: String,
-    val templateType: String?,
-    val planningHorizon: PlanningHorizon,
-    val resourceTypes: List<ResourceType>,
-    val resources: List<Resource>,
-    val activities: List<Activity>,
-    val timeSlots: List<TimeSlot>,
-    val locations: List<Location>,
-    val constraints: List<Constraint>
-)
-
 data class PlanningHorizon(
     val start: LocalDateTime,
     val end: LocalDateTime
@@ -1609,16 +1779,6 @@ data class Resource(
     val id: String,
     val name: String,
     val typeId: String,
-    val attributes: Map<String, String> = emptyMap()
-)
-
-data class Activity(
-    val id: String,
-    val name: String,
-    val type: String?,
-    val resourceRequirements: List<ResourceRequirement>,
-    val allowedTimeSlotIds: Set<String>? = null,
-    val allowedLocationIds: Set<String>? = null,
     val attributes: Map<String, String> = emptyMap()
 )
 
@@ -1639,9 +1799,33 @@ data class TimeSlot(
 data class Location(
     val id: String,
     val name: String,
-    val type: String?,
+    val type: String? = null,
     val capacity: Int? = null,
     val attributes: Map<String, String> = emptyMap()
+)
+
+data class Activity(
+    val id: String,
+    val name: String,
+    val type: String? = null,
+    val resourceRequirements: List<ResourceRequirement>,
+    val allowedTimeSlotIds: Set<String>? = null,
+    val allowedLocationIds: Set<String>? = null,
+    val requiredLocationCapacity: Int? = null,
+    val attributes: Map<String, String> = emptyMap()
+)
+
+data class PlanningProblem(
+    val id: String,
+    val name: String,
+    val templateType: String? = null,
+    val planningHorizon: PlanningHorizon,
+    val resourceTypes: List<ResourceType> = emptyList(),
+    val resources: List<Resource> = emptyList(),
+    val activities: List<Activity> = emptyList(),
+    val timeSlots: List<TimeSlot> = emptyList(),
+    val locations: List<Location> = emptyList(),
+    val constraints: List<Constraint> = emptyList()
 )
 
 data class Assignment(
@@ -1657,106 +1841,171 @@ data class Schedule(
 )
 ```
 
-This code remains conceptual until the constraint and genetic representation designs have been completed.
+Constraint models are documented separately and are omitted here for
+clarity.
 
 ---
 
-# 25. Future Extensions
+# 25. Deviations from Initial Design
 
-The following concepts are intentionally excluded from the MVP domain but may be introduced later:
+Implementation refined several aspects of the original domain design.
 
-* Activities spanning multiple time slots.
-* Recurring activity definitions.
-* Dynamic planning horizons.
-* Multiple simultaneous locations.
-* Hierarchical resources.
-* Composite activities.
-* Dependencies between activities.
-* Precedence constraints.
-* Multi-stage planning.
-* Resource cost models.
-* Multiple optimization objectives.
-* Partial/unassigned scheduling.
-* Dynamic schedule repair after changes.
+### Activity Capacity Requirement
 
-These extensions should only be introduced if they provide sufficient value to justify the additional complexity.
+The initial model did not include:
 
----
-
-## 26. Domain UML Overview
-
-The domain UML diagram provides a simplified visual representation of the main concepts used by Genetic Planner and the relationships between them.
-
-The diagram is stored in:
-
-```text
-/docs/diagrams/domain-model.puml
+```kotlin
+requiredLocationCapacity
 ```
 
-The central element is `PlanningProblem`, which aggregates the information required to describe a planning scenario:
+in `Activity`.
 
-* `Resource`: entities that may participate in scheduled activities.
-* `Activity`: schedulable units that must be placed in the final schedule.
-* `TimeSlot`: available temporal periods.
-* `Location`: optional physical or logical places where activities may occur.
-* `Constraint`: rules used to evaluate whether a schedule is valid or desirable.
+It was introduced when `LocationCapacityConstraint` became part of the
+core constraint catalogue.
 
-Each `Activity` may contain one or more `ResourceRequirement` elements. These requirements define the type and number of resources needed by the activity without introducing domain-specific concepts such as teachers or employees.
+This makes both sides of capacity evaluation explicit:
 
-The result of the planning process is represented by `Schedule`, which contains a collection of `Assignment` objects.
+```text
+Activity.requiredLocationCapacity
+Location.capacity
+```
 
-Each `Assignment` links:
+### Candidate Set Semantics
 
-* one `Activity`,
-* one `TimeSlot`,
-* zero or more assigned `Resource` objects,
-* and optionally one `Location`.
+The initial documentation treated an absent or empty candidate Resource
+set similarly.
 
-The model therefore separates the **definition of the planning problem** from the **resulting schedule**:
+The implemented semantics distinguish them:
+
+```text
+null
+→ unrestricted
+
+emptySet()
+→ explicitly no candidates
+```
+
+This same convention is used by allowed ID sets.
+
+### Validation
+
+The initial design described the domain model as responsible for
+guaranteeing structural validity.
+
+The implemented architecture moved aggregate structural validation to
+`ProblemValidator`.
+
+Domain data classes therefore remain simple representations while
+validation can collect multiple errors.
+
+### Optimization Result
+
+The initial design referred to:
+
+```text
+PlanningResult
+```
+
+The implemented optimization output is:
+
+```text
+OptimizationResult
+```
+
+which contains the generated Schedule, its evaluation, execution
+statistics, and random seed.
+
+### Constraint Catalogue
+
+The initial examples included:
+
+```text
+MaximumAssignments
+```
+
+The implemented core catalogue instead contains:
+
+```text
+HARD
+├── NoOverlap
+├── Availability
+├── RequiredResource
+└── LocationCapacity
+
+SOFT
+├── PreferredTimeSlot
+├── MaxConsecutive
+└── BalancedWorkload
+```
+
+---
+
+# 26. Future Extensions
+
+The following concepts remain intentionally outside the current MVP:
+
+* Activities spanning multiple TimeSlots.
+* Recurring Activity definitions in the core domain.
+* Multiple simultaneous Locations.
+* Hierarchical Resources.
+* Composite Activities.
+* Activity dependencies.
+* Precedence constraints.
+* Resource cost models.
+* Multiple optimization objectives.
+* Partial or unassigned scheduling.
+* Dynamic schedule repair.
+* Time-zone-aware planning.
+
+These extensions should only be introduced when they provide sufficient
+value to justify their additional complexity.
+
+---
+
+# 27. Domain UML
+
+The domain UML diagram is stored in:
+
+```text
+docs/diagrams/domain-model.puml
+```
+
+It represents the same generic concepts documented here:
 
 ```text
 PlanningProblem
-      │
-      ▼
-Genetic Engine
-      │
-      ▼
+├── PlanningHorizon
+├── ResourceType
+├── Resource
+├── Activity
+│     └── ResourceRequirement
+├── TimeSlot
+├── Location
+└── Constraint
+
 Schedule
-      │
-      ▼
-Assignments
+└── Assignment
 ```
 
-This separation allows the same Genetic Engine to operate on different planning scenarios, such as academic timetables and work shift scheduling, without requiring domain-specific modifications.
-
-### Main Cardinalities
-
-The most relevant relationships represented in the UML are:
+The UML must remain consistent with the implemented Kotlin model,
+including:
 
 ```text
-PlanningProblem 1 ---- 0..* Resource
-PlanningProblem 1 ---- 1..* Activity
-PlanningProblem 1 ---- 1..* TimeSlot
-PlanningProblem 1 ---- 0..* Location
-PlanningProblem 1 ---- 0..* Constraint
-
-Activity 1 ---- 0..* ResourceRequirement
-
-Schedule 1 ---- 1..* Assignment
-
-Assignment * ---- 1 Activity
-Assignment * ---- 1 TimeSlot
-Assignment * ---- 0..* Resource
-Assignment * ---- 0..1 Location
+Activity.requiredLocationCapacity
+ResourceRequirement.id
+ResourceRequirement.quantity
+ResourceRequirement.candidateResourceIds
+Assignment.resourceAssignments
 ```
 
-These cardinalities reflect the MVP design decisions:
+The diagram intentionally contains no domain-specific classes such as:
 
-* A planning problem must contain at least one activity and one available time slot.
-* Resources and locations are optional because some planning scenarios may not require them.
-* An activity may require several resources.
-* Each activity produces one assignment in a complete schedule.
-* An assignment always has one activity and one time slot.
-* An assignment may contain multiple resources and optionally one location.
+```text
+Teacher
+Employee
+Subject
+WorkShift
+```
 
-The UML intentionally remains domain-independent. Concepts such as `Teacher`, `Employee`, `Subject`, or `WorkShift` are not represented as core domain classes. They are mapped to the generic model through planning templates.
+Those concepts belong to planning templates rather than the generic
+domain model.

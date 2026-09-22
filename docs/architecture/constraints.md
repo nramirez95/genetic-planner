@@ -2,13 +2,16 @@
 
 ## 1. Purpose
 
-This document defines the conceptual constraint model used by **Genetic Planner**.
+This document describes the constraint model implemented by **Genetic Planner**.
 
-Constraints represent the rules used to evaluate whether a generated `Schedule` is valid and how desirable it is.
+Constraints represent the rules used to evaluate whether a generated
+`Schedule` is feasible and how desirable the solution is.
 
-The constraint model must remain independent from specific planning domains so that the same Genetic Engine can be used for academic scheduling, work shifts, and future planning scenarios.
+The constraint model remains independent from specific planning domains
+so that the same Genetic Engine can be used for Academic Scheduling,
+Work Shift Scheduling, and future planning scenarios.
 
-The central design goal is:
+The central design principle is:
 
 > **Constraints must be extensible without requiring modifications to the Genetic Engine.**
 
@@ -16,19 +19,16 @@ The central design goal is:
 
 ## 2. Constraint Concept
 
-A `Constraint` represents a rule that can evaluate a complete `Schedule` and produce an evaluation result.
+A `Constraint` represents a planning rule capable of evaluating a
+complete `Schedule`.
 
-Conceptually:
+The implemented contract is:
 
 ```kotlin
 interface Constraint {
-
     val id: String
-
     val name: String
-
     val type: ConstraintType
-
     val weight: Double
 
     fun evaluate(schedule: Schedule): ConstraintResult
@@ -43,15 +43,16 @@ Each constraint therefore defines:
 * Its configurable weight.
 * Its own evaluation logic.
 
-The Genetic Engine does not need to know the concrete implementation of the constraint.
+The Genetic Engine does not need to understand the concrete
+implementation of a constraint.
 
-It only needs to execute:
+It operates through the common abstraction:
 
 ```kotlin
 constraint.evaluate(schedule)
 ```
 
-and consume the returned result.
+and consumes the resulting `ConstraintResult`.
 
 ---
 
@@ -66,211 +67,266 @@ enum class ConstraintType {
 }
 ```
 
----
-
-## 4. Hard Constraints
-
-A `HARD` constraint represents a rule that should not be violated in a valid planning solution.
-
-Examples include:
-
-* A resource cannot participate in overlapping activities.
-* A resource must respect its availability.
-* An activity must receive the required resources.
-* A resource must not exceed a configured assignment limit.
-
-A schedule containing hard constraint violations may still exist as a candidate solution during the genetic optimization process, but it is considered infeasible.
-
-This distinction is important because the Genetic Engine may need to explore infeasible intermediate solutions before reaching a feasible one.
-
-Conceptually:
+The type determines the planning semantics of the constraint.
 
 ```text
-Hard violation count = 0
-        ↓
-Feasible schedule
-
-Hard violation count > 0
-        ↓
-Infeasible schedule
+Constraint
+    │
+    ├── HARD
+    │     └── affects feasibility
+    │
+    └── SOFT
+          └── affects schedule quality
 ```
 
-Hard constraints therefore have a strong influence on the quality of a candidate schedule.
+Constraint type and constraint weight represent different concepts and
+must not be confused.
 
 ---
 
-## 5. Soft Constraints
+## 4. HARD Constraints
 
-A `SOFT` constraint represents a preference rather than an absolute requirement.
+A `HARD` constraint represents a mandatory planning rule.
 
-Violating a soft constraint does not make a schedule invalid, but it reduces its quality.
+A Schedule containing one or more HARD constraint violations is
+considered infeasible.
+
+The currently implemented HARD constraints are:
+
+```text
+NoOverlapConstraint
+AvailabilityConstraint
+RequiredResourceConstraint
+LocationCapacityConstraint
+```
+
+Examples of HARD planning rules include:
+
+* A Resource cannot participate in overlapping Activities.
+* A Resource must respect its configured availability.
+* An Activity must receive the Resources required by its
+  `ResourceRequirement` definitions.
+* A selected Location must provide sufficient capacity.
+
+A Schedule containing HARD violations may still exist as a candidate
+solution during genetic optimization.
+
+This is intentional:
+
+```text
+Candidate Schedule
+        │
+        ├── feasible
+        │
+        └── infeasible
+                │
+                ▼
+        Genetic evolution
+```
+
+The Genetic Algorithm may explore infeasible intermediate solutions while
+penalties guide evolution toward better candidates.
+
+Feasibility is determined from violations:
+
+```text
+HARD violations = 0
+        ↓
+Feasible Schedule
+
+HARD violations > 0
+        ↓
+Infeasible Schedule
+```
+
+---
+
+## 5. SOFT Constraints
+
+A `SOFT` constraint represents a preference or quality objective.
+
+Violating a SOFT constraint does not make a Schedule infeasible.
+Instead, the violation contributes to the optimization penalty.
+
+The currently implemented SOFT constraints are:
+
+```text
+PreferredTimeSlotConstraint
+MaxConsecutiveConstraint
+BalancedWorkloadConstraint
+```
 
 Examples include:
 
-* Prefer morning assignments.
-* Minimize consecutive assignments.
-* Balance workload between resources.
-* Prefer specific time periods.
+* Prefer particular TimeSlots for an Activity.
+* Avoid excessive consecutive assignments.
+* Balance workload between Resources.
 
 Conceptually:
 
 ```text
 SOFT constraint satisfied
         ↓
-Better schedule
+Lower penalty
 
 SOFT constraint violated
         ↓
-Valid but less desirable schedule
+Higher penalty
+        ↓
+Schedule remains feasible
 ```
 
-The Genetic Engine should therefore prefer schedules with fewer or less severe soft constraint violations once hard feasibility has been achieved.
+SOFT constraints therefore influence which feasible solutions are
+preferred by the optimization process.
 
 ---
 
-## 6. Penalties
+## 6. Constraint Violations
 
-Constraint violations are represented through penalties.
+A `ConstraintViolation` represents one concrete rule violation detected
+during evaluation.
 
-A penalty is a non-negative numeric value that expresses how strongly a schedule violates a constraint.
+The implemented model is:
+
+```kotlin
+data class ConstraintViolation(
+    val message: String,
+    val penalty: Double,
+    val relatedEntityIds: Set<String> = emptySet()
+)
+```
+
+Each violation provides:
+
+* A human-readable explanation.
+* A raw penalty representing its cost or severity.
+* The identifiers of relevant planning entities when applicable.
+
+For example:
+
+```text
+Resource worker-1 has overlapping assignments.
+```
+
+or:
+
+```text
+Location room-1 has insufficient capacity.
+```
+
+The violation model supports:
+
+* Fitness calculation.
+* Debugging.
+* Automated testing.
+* Experimental evaluation.
+* Future user-facing explanations in the Results interface.
+
+---
+
+## 7. Penalties
+
+Every violation has a non-negative penalty.
 
 Conceptually:
 
 ```text
-0.0
-    No violation
+penalty = 0
+    → no cost
 
-> 0.0
-    Constraint violation
+penalty > 0
+    → violation cost
 ```
+
+Different constraints may use different penalty semantics.
 
 A constraint may produce:
 
-* No penalty.
-* One penalty.
-* Multiple penalties.
-* A penalty proportional to the severity of the violation.
+* No violations.
+* One violation.
+* Multiple violations.
+* Violations with severity-dependent penalties.
 
-For example:
-
-```text
-NoOverlap
-
-0 overlaps
-    → penalty = 0
-
-1 overlap
-    → penalty = 1
-
-3 overlaps
-    → penalty = 3
-```
-
-Another constraint may use a different severity model.
-
-For example:
+For example, a simple violation may use:
 
 ```text
-MaximumAssignments
-
-Maximum allowed = 5
-
-Actual assignments = 5
-    → penalty = 0
-
-Actual assignments = 6
-    → penalty = 1
-
-Actual assignments = 8
-    → penalty = 3
+raw penalty = 1
 ```
 
-The exact penalty calculation belongs to each concrete constraint.
+while `LocationCapacityConstraint` can use the capacity shortage as the
+violation penalty:
 
-The global combination of penalties into the final fitness value will be defined separately in the fitness and weighting design.
+```text
+required capacity = 30
+actual capacity   = 20
+
+shortage = 10
+
+raw penalty = 10
+```
+
+The calculation of each individual violation penalty belongs to the
+concrete constraint implementation.
 
 ---
 
-## 7. Configurable Weight
+## 8. Configurable Weight
 
-Every constraint has a configurable `weight`.
+Every Constraint exposes:
 
 ```kotlin
 val weight: Double
 ```
 
-The weight represents the relative importance of the constraint when its penalty contributes to the optimization process.
+The weight determines how strongly the constraint penalty influences
+optimization.
 
-Conceptually:
+The relationship is:
 
 ```text
-raw penalty × weight = weighted penalty
+weightedPenalty =
+rawPenalty × weight
 ```
 
 For example:
 
 ```text
-Raw penalty = 2
-Weight      = 5
+rawPenalty = 2
+weight     = 5
 
-Weighted penalty = 10
+weightedPenalty = 10
 ```
 
-The weight allows two constraints of the same type to have different importance.
+The same formula applies to both HARD and SOFT constraints.
 
-Example:
-
-```text
-Preferred morning
-weight = 2
-
-Avoid consecutive assignments
-weight = 5
-```
-
-In this case, avoiding consecutive assignments has a greater influence on optimization.
+There is no hidden global HARD multiplier.
 
 ---
 
-## 8. Weight Rules
+## 9. Type vs Weight
 
-The following rules apply:
+`ConstraintType` and `weight` have different responsibilities.
 
-```text
-weight >= 0
-```
+### Type
 
-A negative weight is not allowed because penalties must not improve a solution.
-
-A weight of:
+The type determines planning semantics:
 
 ```text
-0
+HARD violation
+→ Schedule is infeasible
+
+SOFT violation
+→ Schedule remains feasible
 ```
 
-effectively disables the influence of the constraint while preserving its configuration.
+### Weight
 
-For the MVP, sensible default weights should be provided by templates so users do not need to manually configure every value.
-
-The detailed weighting strategy will be defined in the separate task:
+The weight determines optimization impact:
 
 ```text
-Design constraint evaluation and weighting
+rawPenalty × weight
+→ weightedPenalty
 ```
-
----
-
-## 9. Hard vs Soft Weighting
-
-Both hard and soft constraints expose a `weight` property for consistency and configurability.
-
-However, their semantic role differs.
-
-For `SOFT` constraints, the weight represents preference importance.
-
-For `HARD` constraints, the weight represents the severity applied during optimization when the rule is violated.
-
-A hard constraint remains hard regardless of its weight.
 
 Therefore:
 
@@ -279,302 +335,417 @@ type = HARD
 weight = 1
 ```
 
-does not make the constraint less mandatory than:
+and:
 
 ```text
 type = HARD
 weight = 100
 ```
 
-The `type` determines feasibility.
+are both mandatory constraints.
 
-The `weight` determines optimization pressure.
+The second simply creates greater optimization pressure when violated.
+
+The fundamental rule is:
+
+> **Constraint type determines planning semantics; weight determines optimization impact.**
 
 ---
 
-## 10. Constraint Evaluation Result
+## 10. Zero Weight
 
-Constraint evaluation should return more information than a simple Boolean.
+The constraint evaluation model supports:
 
-A Boolean such as:
-
-```kotlin
-true
-false
+```text
+weight >= 0
 ```
 
-would indicate whether the rule is satisfied, but would not provide enough information for:
+Negative weights are invalid because a violation must not improve a
+solution.
 
-* Fitness calculation.
-* Error explanations.
-* Results visualization.
-* Debugging.
-* Experimental evaluation.
+A zero weight produces:
 
-The proposed result is therefore:
+```text
+weightedPenalty = 0
+```
+
+but does not change the constraint type.
+
+This distinction is particularly important for HARD constraints.
+
+For example:
+
+```text
+type = HARD
+violations = 1
+weight = 0
+```
+
+produces no weighted fitness penalty, but the Schedule remains
+infeasible because feasibility depends on HARD violations rather than
+the numeric penalty.
+
+Therefore:
+
+> **Fitness measures optimization penalty, while HARD constraint violations determine feasibility.**
+
+---
+
+## 11. ConstraintResult
+
+Constraint evaluation returns detailed information rather than a simple
+Boolean.
+
+The implemented model is:
 
 ```kotlin
 data class ConstraintResult(
     val constraintId: String,
     val type: ConstraintType,
-    val violations: List<ConstraintViolation>,
-    val rawPenalty: Double,
+    val violationDetails: List<ConstraintViolation>,
+    val weight: Double
+) {
+    val violations: Int
+        get() = violationDetails.size
+
+    val rawPenalty: Double
+        get() = violationDetails.sumOf { it.penalty }
+
     val weightedPenalty: Double
-)
+        get() = rawPenalty * weight
+}
 ```
+
+Only the fundamental evaluation information is stored:
+
+```text
+constraintId
+type
+violationDetails
+weight
+```
+
+The remaining values are derived:
+
+```text
+violations
+    = number of violationDetails
+
+rawPenalty
+    = sum of violation penalties
+
+weightedPenalty
+    = rawPenalty × weight
+```
+
+This avoids storing redundant values that could become inconsistent.
 
 ---
 
-## 11. Constraint Violation
+## 12. ConstraintResult Semantics
 
-A `ConstraintViolation` represents one concrete violation detected during evaluation.
-
-Conceptually:
-
-```kotlin
-data class ConstraintViolation(
-    val message: String,
-    val penalty: Double,
-    val relatedEntityIds: Set<String> = emptySet()
-)
-```
-
-The exact implementation may evolve, but each violation should provide enough information to explain why a candidate schedule has been penalized.
-
-Examples:
+A constraint with no violations produces conceptually:
 
 ```text
-Teacher Ana has overlapping assignments on Monday at 09:00.
+violationDetails = []
+violations        = 0
+rawPenalty        = 0
+weightedPenalty   = 0
 ```
 
-```text
-Employee Laura has 7 assignments but the maximum allowed is 5.
-```
-
-This information can later be used in the Results interface.
-
----
-
-## 12. Result Semantics
-
-A successful evaluation with no violations may return:
+A violated constraint may produce:
 
 ```text
-violations = []
-rawPenalty = 0
-weightedPenalty = 0
-```
+violationDetails =
+    violation A → penalty 1
+    violation B → penalty 2
 
-A violated constraint may return:
+violations = 2
 
-```text
-violations = [ ... ]
-rawPenalty = 3
+rawPenalty =
+1 + 2
+= 3
+
 weight = 5
-weightedPenalty = 15
+
+weightedPenalty =
+3 × 5
+= 15
 ```
 
-The relationship is conceptually:
+The complete relationship is:
 
 ```text
 Constraint
     │
     ▼
-evaluate(schedule)
+evaluate(Schedule)
     │
     ▼
 ConstraintResult
     │
-    ├── Violations
-    ├── Raw Penalty
-    └── Weighted Penalty
+    ├── violationDetails
+    │       │
+    │       └── ConstraintViolation
+    │               ├── message
+    │               ├── penalty
+    │               └── relatedEntityIds
+    │
+    ├── violations
+    ├── rawPenalty
+    └── weightedPenalty
 ```
 
 ---
 
 ## 13. Evaluation Scope
 
-For the MVP, constraints evaluate the complete `Schedule`.
+Constraints evaluate a complete `Schedule`.
 
-The public contract therefore remains:
+The common public contract remains:
 
 ```kotlin
 fun evaluate(schedule: Schedule): ConstraintResult
 ```
 
-This provides a simple and uniform interface for the Genetic Engine.
-
-Individual constraint implementations may internally inspect:
-
-* Assignments.
-* Activities.
-* Resources.
-* Time slots.
-* Locations.
-* Planning problem configuration.
+Individual constraint implementations may also contain the planning
+information required to perform their evaluation.
 
 For example:
+
+```text
+AvailabilityConstraint
+        │
+        ├── configured availability
+        │
+        └── Schedule
+                │
+                ▼
+             evaluate
+```
+
+or:
 
 ```text
 NoOverlapConstraint
-        ↓
-Inspect assignments grouped by resource
-        ↓
-Compare assigned time slots
+        │
+        ├── relevant TimeSlots
+        │
+        └── Schedule
+                │
+                ▼
+      compare Resource assignments
 ```
 
-The Genetic Engine does not need to know how this evaluation is performed.
+The Genetic Engine does not need to understand how each concrete
+constraint performs its evaluation.
 
 ---
 
-## 14. Access to Planning Problem Data
+## 14. Constraint Parameters
 
-Some constraints require information that is not contained directly in `Schedule`.
+Different constraints require different configuration parameters.
 
-For example:
+These parameters belong to the concrete constraint implementation rather
+than to the generic `Constraint` interface.
+
+Conceptually:
+
+```text
+Constraint
+│
+├── common:
+│     id
+│     name
+│     type
+│     weight
+│
+└── concrete implementation:
+      constraint-specific configuration
+```
+
+Examples include:
 
 ```text
 AvailabilityConstraint
-```
-
-needs resource availability configuration.
-
-Similarly:
-
-```text
-MaximumAssignmentsConstraint
-```
-
-needs the configured assignment limit.
-
-Therefore, a concrete constraint should contain the parameters required to perform its own evaluation.
-
-For example, conceptually:
-
-```kotlin
-class MaximumAssignmentsConstraint(
-    override val id: String,
-    override val name: String,
-    override val type: ConstraintType,
-    override val weight: Double,
-    val resourceId: String,
-    val maximumAssignments: Int
-) : Constraint
-```
-
-The constraint definition itself therefore carries the rule configuration.
-
-This avoids forcing the Genetic Engine to interpret constraint-specific parameters.
-
----
-
-## 15. Constraint Parameters
-
-Different constraints require different parameters.
-
-Examples:
-
-```text
-AvailabilityConstraint
-    resourceId
-    availableTimeSlotIds
-
-MaximumAssignmentsConstraint
-    resourceId
-    maximumAssignments
+    → Resource availability by TimeSlot
 
 PreferredTimeSlotConstraint
-    resourceId
-    preferredTimeSlotIds
+    → preferred TimeSlots by Activity
+
+MaxConsecutiveConstraint
+    → configured maximum consecutive assignments
+
+BalancedWorkloadConstraint
+    → Resources included in workload evaluation
 ```
 
-The common `Constraint` interface should not contain every possible constraint parameter.
-
-Instead, each concrete constraint implementation defines only the parameters it requires.
-
-This keeps the model extensible.
+This keeps the generic interface small and extensible.
 
 ---
 
-## 16. Extensibility
+## 15. Constraint Evaluation Aggregation
 
-A fundamental requirement is that new constraints can be added without changing the Genetic Engine.
+Individual constraint results are aggregated by
+`ConstraintEvaluator`.
 
-The Genetic Engine should operate only against the `Constraint` abstraction.
+Conceptually:
+
+```text
+Schedule
+    │
+    ▼
+Constraint 1 ──→ ConstraintResult
+Constraint 2 ──→ ConstraintResult
+Constraint 3 ──→ ConstraintResult
+    │
+    ▼
+ConstraintEvaluator
+    │
+    ▼
+ScheduleEvaluation
+```
+
+`ConstraintEvaluator` separates weighted penalties according to
+constraint type:
+
+```text
+HARD weighted penalties
+        ↓
+hardPenalty
+
+SOFT weighted penalties
+        ↓
+softPenalty
+```
+
+The complete fitness is:
+
+```text
+fitness =
+hardPenalty + softPenalty
+```
+
+Feasibility is derived separately from HARD violations.
+
+Detailed aggregation semantics are documented in:
+
+```text
+docs/architecture/constraint-evaluation.md
+```
+
+---
+
+## 16. Relationship with Fitness
+
+Constraint evaluation and fitness calculation are deliberately separated
+from Jenetics.
+
+The flow is:
+
+```text
+Schedule
+    │
+    ▼
+Constraint.evaluate()
+    │
+    ▼
+ConstraintResult
+    │
+    ▼
+ConstraintEvaluator
+    │
+    ▼
+ScheduleEvaluation
+    │
+    ├── hardPenalty
+    ├── softPenalty
+    ├── totalPenalty
+    ├── fitness
+    └── feasible
+```
+
+Jenetics receives only the resulting numeric fitness and minimizes it.
+
+The planning domain therefore remains independent from the Genetic
+Algorithm library.
+
+---
+
+## 17. Extensibility
+
+A fundamental architectural requirement is that new constraints can be
+added without modifying the Genetic Engine.
+
+The Genetic Engine operates only against the `Constraint` abstraction.
 
 Conceptually:
 
 ```kotlin
 for (constraint in planningProblem.constraints) {
-    val result = constraint.evaluate(schedule)
+    constraint.evaluate(schedule)
 }
 ```
 
-The engine should never contain logic such as:
+The engine does not contain constraint-specific branching such as:
 
 ```kotlin
 if (constraint is NoOverlapConstraint) {
-    ...
-}
-
-if (constraint is AvailabilityConstraint) {
-    ...
+    // constraint-specific evaluation
 }
 ```
 
 or:
 
 ```kotlin
-when (constraint.typeName) {
-    "NO_OVERLAP" -> ...
-    "AVAILABILITY" -> ...
+when (constraint) {
+    // inspect concrete constraint types
 }
 ```
 
-Constraint-specific behaviour belongs inside each constraint implementation.
+Constraint-specific behaviour remains inside each implementation.
 
 ---
 
-## 17. Adding a New Constraint
+## 18. Adding a New Constraint
 
-For example, a future constraint:
+A future constraint such as:
 
 ```text
 MinimumRestTimeConstraint
 ```
 
-should only require:
+would require:
 
-1. Creating the new constraint implementation.
-2. Defining its parameters.
+1. Creating the new Constraint implementation.
+2. Defining its configuration parameters.
 3. Implementing `evaluate(schedule)`.
-4. Registering/exposing it through the application or template layer when required.
+4. Producing the corresponding `ConstraintViolation` objects.
+5. Exposing the constraint through the application or template layer
+   when required.
 
-The Genetic Engine remains unchanged.
+No changes to the Genetic Engine are required.
 
 Conceptually:
 
 ```text
-Constraint
-   ▲
-   │
-   ├── NoOverlapConstraint
-   ├── AvailabilityConstraint
-   ├── MaximumAssignmentsConstraint
-   ├── PreferredTimeSlotConstraint
-   │
-   └── MinimumRestTimeConstraint
+                     Constraint
+                         ▲
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+NoOverlapConstraint  ...       MinimumRestTimeConstraint
 ```
 
 This follows the Open/Closed Principle:
 
-> The constraint system is open for extension but closed for modification of the Genetic Engine.
+> **The constraint system is open for extension while the Genetic Engine remains closed to constraint-specific modification.**
 
 ---
 
-## 18. Genetic Engine Boundary
+## 19. Genetic Engine Boundary
 
-The Genetic Engine should only depend on the generic contract:
+The Genetic Engine depends on generic planning abstractions:
 
 ```text
 Schedule
@@ -583,65 +754,80 @@ Schedule
 List<Constraint>
     │
     ▼
-evaluate()
+ConstraintEvaluator
     │
     ▼
-ConstraintResult
+ScheduleEvaluation
+    │
+    ▼
+Fitness
 ```
 
-The engine may aggregate:
+It does not need to understand:
 
-```text
-Hard violations
-Soft violations
-Raw penalties
-Weighted penalties
-```
+* Why a Resource is unavailable.
+* Why a particular TimeSlot is preferred.
+* Why a Location requires a particular capacity.
+* What a Resource represents in a specific planning domain.
 
-but it must not understand the internal semantics of individual constraints.
-
-This separation makes it possible to support new domains and planning rules without coupling them to the genetic algorithm implementation.
+This separation allows new planning rules and templates to be introduced
+without coupling them to the Genetic Algorithm implementation.
 
 ---
 
-## 19. Constraint Model Overview
+## 20. Constraint Model Overview
 
-The conceptual model is:
+The implemented model can be summarized as:
 
 ```text
-                 Constraint
-                     │
-          ┌──────────┴──────────┐
-          │                     │
-        HARD                   SOFT
-          │                     │
-          └──────────┬──────────┘
-                     │
-                     ▼
-             evaluate(Schedule)
-                     │
-                     ▼
-             ConstraintResult
-                     │
-          ┌──────────┼───────────┐
-          │          │           │
-     Violations  Raw Penalty  Weighted Penalty
+                         Constraint
+                             │
+                ┌────────────┴────────────┐
+                │                         │
+              HARD                       SOFT
+                │                         │
+                └────────────┬────────────┘
+                             │
+                             ▼
+                     evaluate(Schedule)
+                             │
+                             ▼
+                    ConstraintResult
+                             │
+          ┌──────────────────┼──────────────────┐
+          │                  │                  │
+ violationDetails       rawPenalty       weightedPenalty
+          │
+          ▼
+ ConstraintViolation
+ ├── message
+ ├── penalty
+ └── relatedEntityIds
 ```
 
-Each violation may contain:
+At aggregate level:
 
 ```text
-ConstraintViolation
-├── Message
-├── Penalty
-└── Related entities
+ConstraintResults
+        │
+        ▼
+ConstraintEvaluator
+        │
+        ▼
+ScheduleEvaluation
+        │
+        ├── hardPenalty
+        ├── softPenalty
+        ├── totalPenalty
+        ├── fitness
+        └── feasible
 ```
 
 ---
 
-## 20. Conceptual Kotlin Model
+## 21. Implemented Kotlin Model
 
-The resulting conceptual model is:
+The core implemented constraint model is:
 
 ```kotlin
 enum class ConstraintType {
@@ -650,101 +836,234 @@ enum class ConstraintType {
 }
 
 interface Constraint {
-
     val id: String
-
     val name: String
-
     val type: ConstraintType
-
     val weight: Double
 
     fun evaluate(schedule: Schedule): ConstraintResult
 }
-
-data class ConstraintResult(
-    val constraintId: String,
-    val type: ConstraintType,
-    val violations: List<ConstraintViolation>,
-    val rawPenalty: Double,
-    val weightedPenalty: Double
-)
 
 data class ConstraintViolation(
     val message: String,
     val penalty: Double,
     val relatedEntityIds: Set<String> = emptySet()
 )
+
+data class ConstraintResult(
+    val constraintId: String,
+    val type: ConstraintType,
+    val violationDetails: List<ConstraintViolation>,
+    val weight: Double
+) {
+    val violations: Int
+        get() = violationDetails.size
+
+    val rawPenalty: Double
+        get() = violationDetails.sumOf { it.penalty }
+
+    val weightedPenalty: Double
+        get() = rawPenalty * weight
+}
 ```
 
-This model is conceptual and may be refined during implementation if required by the Genetic Engine or Jenetics integration.
+The constraint model contains no dependency on:
+
+```text
+Spring
+JPA
+Jenetics
+Academic Scheduling
+Work Shift Scheduling
+```
 
 ---
 
-## 21. Design Decisions
+## 22. Design Decisions
 
-### C1 — Constraints evaluate schedules
+### C1 — Constraints evaluate Schedules
 
-All constraints expose the same evaluation operation:
+All constraints expose:
 
 ```kotlin
 evaluate(schedule)
 ```
 
-This keeps the Genetic Engine independent from constraint-specific logic.
+This provides a uniform evaluation boundary.
 
-### C2 — Hard and soft constraints share one abstraction
+### C2 — HARD and SOFT share one abstraction
 
 Both types implement the same `Constraint` interface.
 
-Their different semantics are represented by `ConstraintType`.
+Their semantic difference is represented by `ConstraintType`.
 
-### C3 — Violations produce penalties
+### C3 — Violations are explicit
 
-Constraints are not evaluated using only a Boolean result.
+Constraint evaluation produces `ConstraintViolation` objects rather than
+only a Boolean or numeric value.
 
-The penalty provides information about the amount or severity of the violation.
+This enables explainability and detailed evaluation.
 
-### C4 — Weight is configurable
+### C4 — Penalties belong to violations
 
-Each constraint contains a configurable weight that controls its influence during optimization.
+Each violation defines its own raw penalty.
 
-### C5 — Type and weight have different meanings
+This allows different constraints to represent violation severity
+appropriately.
 
-`ConstraintType` determines whether a violation affects feasibility.
+### C5 — Weight is configurable
 
-`weight` determines the optimization importance of the violation.
+Every Constraint exposes a weight controlling its optimization impact.
 
-### C6 — Evaluation results are explainable
+### C6 — Type and weight are independent
 
-`ConstraintResult` contains individual violations rather than only a numeric score.
+`ConstraintType` determines feasibility semantics.
 
-This supports fitness calculation, debugging, evaluation, and user-facing explanations.
+`weight` determines optimization pressure.
 
-### C7 — Constraint-specific parameters belong to concrete constraints
+### C7 — Derived values are not stored
 
-The generic interface does not know parameters such as resource availability or assignment limits.
+`violations`, `rawPenalty`, and `weightedPenalty` are derived from the
+underlying violation details and weight.
 
-### C8 — Genetic Engine depends only on Constraint
+This prevents redundant state.
 
-Adding a new constraint implementation must not require modifying the Genetic Engine.
+### C8 — Feasibility is not part of ConstraintResult
+
+Individual Constraint results do not decide overall Schedule
+feasibility.
+
+Feasibility is derived at `ScheduleEvaluation` level from all HARD
+constraint results.
+
+### C9 — Constraint-specific parameters belong to implementations
+
+The common abstraction contains only properties shared by all
+constraints.
+
+### C10 — Constraints remain independent from Jenetics
+
+The domain model evaluates Schedules without exposing genetic library
+types.
+
+### C11 — Genetic Engine depends on abstractions
+
+Adding a new constraint does not require changes to the Genetic Engine.
 
 ---
 
-## 22. Scope Boundary
+## 23. Deviations from Initial Design
+
+The constraint model was refined during implementation.
+
+### ConstraintResult
+
+The initial design proposed storing:
+
+```text
+violations
+rawPenalty
+weightedPenalty
+```
+
+directly in `ConstraintResult`.
+
+The implemented model instead stores:
+
+```text
+violationDetails
+weight
+```
+
+and derives:
+
+```text
+violations
+rawPenalty
+weightedPenalty
+```
+
+This reduces duplicated state and guarantees consistency between
+violation details and calculated penalties.
+
+### Feasibility
+
+The implemented model explicitly separates:
+
+```text
+fitness
+```
+
+from:
+
+```text
+feasibility
+```
+
+Fitness depends on weighted penalties.
+
+Feasibility depends on the existence of HARD violations.
+
+This distinction means that a zero-weight HARD constraint can still make
+a Schedule infeasible.
+
+### Constraint Catalogue
+
+The examples in the initial design included
+`MaximumAssignmentsConstraint`.
+
+The implemented core catalogue instead contains:
+
+```text
+HARD
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+├── RequiredResourceConstraint
+└── LocationCapacityConstraint
+
+SOFT
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint
+```
+
+The complete implemented catalogue is documented in:
+
+```text
+docs/architecture/constraint-catalogue.md
+```
+
+---
+
+## 24. Scope Boundary
 
 This document defines:
 
 * The `Constraint` abstraction.
 * HARD and SOFT semantics.
-* Penalties.
+* `ConstraintViolation`.
+* `ConstraintResult`.
+* Raw and weighted penalties.
 * Configurable weights.
-* Evaluation results.
 * Extensibility principles.
+* The boundary between constraints and the Genetic Engine.
 
-It does **not** define:
+Detailed topics are documented separately:
 
-* The complete catalogue of concrete constraints.
-* Exact penalty values for each constraint.
-* Global weighting formulas.
-* The final fitness function.
+```text
+Concrete constraint catalogue
+→ docs/architecture/constraint-catalogue.md
+
+Constraint aggregation and ScheduleEvaluation
+→ docs/architecture/constraint-evaluation.md
+
+Fitness calculation
+→ docs/algorithm/fitness.md
+
+Genetic Algorithm implementation
+→ docs/algorithm/genetic-algorithm.md
+```
+
+This separation keeps the constraint model focused on the common
+abstractions while allowing the concrete catalogue, evaluation process,
+and optimization strategy to evolve independently.

@@ -1,112 +1,126 @@
-# Genetic Planner — Initial Constraint Catalogue
+# Genetic Planner — Constraint Catalogue
 
 ## 1. Purpose
 
-This document defines the initial constraint catalogue for **Genetic Planner 1.0**.
+This document describes the generic constraint catalogue implemented by
+Genetic Planner.
 
-The catalogue identifies the rules that may be applied to a planning problem and classifies them according to their implementation priority:
+Constraints express planning rules evaluated against a generated
+`Schedule`.
 
-* **Must** — required for the MVP.
-* **Should** — desirable for version 1.0 if time permits.
-* **Could** — optional extensions.
+All constraints implement the common `Constraint` abstraction and remain
+independent from specific planning domains.
 
-All constraints follow the generic `Constraint` abstraction and must remain independent from specific planning domains.
+The same constraint implementations can therefore be reused across
+Academic Scheduling, Work Shift Scheduling, and future planning
+templates.
 
-The same constraint should therefore be reusable for academic scheduling, work shift scheduling, and future planning scenarios.
+The catalogue distinguishes between:
 
----
-
-# 2. Catalogue Overview
-
-## Must — MVP
-
-The following constraints are required for the MVP:
-
-```text
-NoOverlap
-Availability
-RequiredResource
-MaximumAssignments
-```
-
-## Should
-
-The following constraints are desirable for version 1.0:
-
-```text
-MinimumAssignments
-MaxConsecutive
-PreferredTimeSlot
-```
-
-## Could
-
-The following constraints are optional:
-
-```text
-Capacity
-DifferentDay
-```
-
-The complete catalogue is:
-
-| Constraint                     | Type | Priority |
-| ------------------------------ | ---- | -------- |
-| `NoOverlapConstraint`          | HARD | MUST     |
-| `AvailabilityConstraint`       | HARD | MUST     |
-| `RequiredResourceConstraint`   | HARD | MUST     |
-| `MaximumAssignmentsConstraint` | HARD | MUST     |
-| `MinimumAssignmentsConstraint` | SOFT | SHOULD   |
-| `MaxConsecutiveConstraint`     | SOFT | SHOULD   |
-| `PreferredTimeSlotConstraint`  | SOFT | SHOULD   |
-| `CapacityConstraint`           | HARD | COULD    |
-| `DifferentDayConstraint`       | SOFT | COULD    |
+- **HARD constraints**, which define mandatory planning rules and
+  determine schedule feasibility.
+- **SOFT constraints**, which express preferences or quality objectives
+  and influence optimization without determining feasibility.
 
 ---
 
-# 3. NoOverlapConstraint
+## 2. Implemented Constraint Catalogue
 
-## Description
+The current core catalogue contains seven generic constraints:
 
-`NoOverlapConstraint` prevents the same resource from being assigned to two activities whose time slots overlap.
+| Constraint | Type | Status |
+| --- | --- | --- |
+| `NoOverlapConstraint` | HARD | Implemented |
+| `AvailabilityConstraint` | HARD | Implemented |
+| `RequiredResourceConstraint` | HARD | Implemented |
+| `LocationCapacityConstraint` | HARD | Implemented |
+| `PreferredTimeSlotConstraint` | SOFT | Implemented |
+| `MaxConsecutiveConstraint` | SOFT | Implemented |
+| `BalancedWorkloadConstraint` | SOFT | Implemented |
 
-This constraint protects one of the fundamental validity rules of a schedule: a resource cannot participate in two simultaneous assignments.
+The catalogue deliberately focuses on a small set of reusable rules that
+cover both schedule feasibility and schedule quality.
 
-## Type
+Additional constraints can be introduced without modifying the Genetic
+Engine.
+
+---
+
+## 3. Common Constraint Model
+
+All constraints follow:
+
+```kotlin
+interface Constraint {
+    val id: String
+    val name: String
+    val type: ConstraintType
+    val weight: Double
+
+    fun evaluate(schedule: Schedule): ConstraintResult
+}
+```
+
+where:
+
+```kotlin
+enum class ConstraintType {
+    HARD,
+    SOFT
+}
+```
+
+A constraint evaluates a domain `Schedule` and produces detailed
+violations through a `ConstraintResult`.
+
+Constraint evaluation is independent from Jenetics.
+
+---
+
+## 4. HARD Constraints
+
+HARD constraints represent mandatory planning rules.
+
+If any HARD constraint produces one or more violations:
+
+```text
+Schedule
+    ↓
+infeasible
+```
+
+HARD constraints also contribute their weighted penalties to fitness.
+
+The current HARD catalogue contains:
+
+```text
+NoOverlapConstraint
+AvailabilityConstraint
+RequiredResourceConstraint
+LocationCapacityConstraint
+```
+
+---
+
+## 5. NoOverlapConstraint
+
+### Description
+
+`NoOverlapConstraint` prevents the same Resource from being assigned to
+overlapping activities.
+
+It protects the fundamental scheduling rule that one Resource cannot
+participate in two simultaneous assignments.
+
+### Type
 
 ```text
 HARD
 ```
 
-## Priority
+### Overlap Rule
 
-```text
-MUST
-```
-
-It is part of the MVP.
-
-## Parameters
-
-The constraint may optionally target:
-
-```text
-resourceIds
-resourceTypeIds
-```
-
-If no specific target is configured, the constraint applies to all resources.
-
-Conceptually:
-
-```kotlin
-NoOverlapConstraint(
-    resourceIds: Set<String>? = null,
-resourceTypeIds: Set<String>? = null
-)
-```
-
-Two slots overlap when:
+Two TimeSlots overlap when:
 
 ```text
 slotA.start < slotB.end
@@ -114,474 +128,488 @@ AND
 slotB.start < slotA.end
 ```
 
-## Academic Example
+Adjacent TimeSlots therefore do not overlap.
+
+For example:
+
+```text
+09:00–10:00
+10:00–11:00
+```
+
+are valid consecutive periods.
+
+However:
+
+```text
+09:00–10:00
+09:30–10:30
+```
+
+overlap.
+
+### Violation Semantics
+
+The constraint evaluates Resources shared by overlapping assignments.
+
+One violation is produced for each conflicting Resource and assignment
+pair.
+
+### Academic Example
 
 Teacher Ana is assigned to:
 
 ```text
-Mathematics 1A
+Mathematics
 Monday 09:00–10:00
 ```
 
-and simultaneously to:
+and:
 
 ```text
-Physics 2A
+Physics
 Monday 09:30–10:30
 ```
 
-The assignments overlap.
+The assignments overlap and use the same Resource.
 
 Result:
 
 ```text
-NoOverlapConstraint → violation
+NoOverlapConstraint
+→ HARD violation
 ```
 
-The same rule may also apply to student groups.
-
-For example, group `1A` cannot attend Mathematics and English simultaneously.
-
-## Work Shift Example
+### Work Shift Example
 
 Employee Laura is assigned to:
 
 ```text
 Reception
-Monday 08:00–14:00
+08:00–14:00
 ```
 
-and also:
+and:
 
 ```text
 Support Desk
-Monday 12:00–18:00
+12:00–18:00
 ```
 
-Because both assignments overlap between 12:00 and 14:00:
+The assignments overlap between 12:00 and 14:00.
 
-```text
-NoOverlapConstraint → violation
-```
+The same generic constraint detects the conflict.
 
 ---
 
-# 4. AvailabilityConstraint
+## 6. AvailabilityConstraint
 
-## Description
+### Description
 
-`AvailabilityConstraint` ensures that a resource is only assigned during periods in which it is available.
+`AvailabilityConstraint` ensures that Resources are assigned only to
+TimeSlots in which they are available.
 
-Availability is represented as a constraint rather than an intrinsic property of `Resource`, allowing the same resource model to remain generic.
+Availability is represented as a constraint rather than an intrinsic
+property of `Resource`.
 
-## Type
+This keeps the generic Resource model independent from scheduling rules.
+
+### Type
 
 ```text
 HARD
 ```
 
-## Priority
+### Configuration Semantics
+
+Availability is configured by Resource.
+
+The implementation distinguishes between:
 
 ```text
-MUST
+Resource absent from availability configuration
+→ unrestricted
 ```
 
-It is part of the MVP.
-
-## Parameters
-
-Typical parameters are:
+and:
 
 ```text
-resourceId
-availableTimeSlotIds
+Resource configured with an empty set
+→ never available
 ```
 
-Conceptually:
+A Resource configured with specific TimeSlots may only be assigned to
+those TimeSlots.
 
-```kotlin
-AvailabilityConstraint(
-    resourceId: String,
-    availableTimeSlotIds: Set<String>
-)
-```
+### Academic Example
 
-An alternative representation may define unavailable periods instead. The final implementation should use one consistent approach.
-
-## Academic Example
-
-Teacher Ana is available:
+Teacher Ana is configured as available during:
 
 ```text
-Monday 09:00–12:00
-Tuesday 09:00–11:00
+Monday 09:00–10:00
+Monday 10:00–11:00
 ```
 
-but an activity assigns her to:
+but the generated Schedule assigns her to:
 
 ```text
-Tuesday 12:00–13:00
+Monday 12:00–13:00
 ```
 
 Result:
 
 ```text
-AvailabilityConstraint → violation
+AvailabilityConstraint
+→ HARD violation
 ```
 
-## Work Shift Example
+### Work Shift Example
 
-Employee Pedro is available only for morning shifts.
+Employee Pedro is available only during configured morning TimeSlots.
 
-The generated schedule assigns Pedro to:
-
-```text
-Tuesday Afternoon
-14:00–20:00
-```
-
-Result:
-
-```text
-AvailabilityConstraint → violation
-```
+An afternoon assignment therefore produces the same generic violation.
 
 ---
 
-# 5. RequiredResourceConstraint
+## 7. RequiredResourceConstraint
 
-## Description
+### Description
 
-`RequiredResourceConstraint` ensures that a specific resource is assigned to an activity when that assignment is mandatory.
+`RequiredResourceConstraint` verifies that the Resource requirements
+defined by each Activity are correctly satisfied by its Assignment.
 
-It complements `ResourceRequirement`.
+Activities express their structural Resource needs through
+`ResourceRequirement`.
 
-`ResourceRequirement` defines the structural resource needs of an activity:
-
-```text
-Activity requires:
-1 TEACHER
-```
-
-while `RequiredResourceConstraint` expresses a concrete planning rule:
+For example:
 
 ```text
-This activity must specifically use Teacher Ana.
+Activity
+    ↓
+ResourceRequirement
+    ├── resourceTypeId
+    ├── quantity
+    └── candidateResourceIds
 ```
 
-This distinction avoids using domain-specific logic in the Genetic Engine.
+The Assignment then provides:
 
-## Type
+```text
+ResourceRequirement.id
+        ↓
+List<Resource.id>
+```
+
+through:
+
+```text
+Assignment.resourceAssignments
+```
+
+### Type
 
 ```text
 HARD
 ```
 
-## Priority
+### Evaluation
+
+For every ResourceRequirement, the constraint verifies:
+
+- The required quantity.
+- That assigned Resources are distinct.
+- That assigned Resources have the required Resource type.
+- That assigned Resources belong to the configured candidate set when
+  one is provided.
+
+### Exact Quantity
+
+`quantity` represents the exact number of distinct Resources required.
+
+For example:
 
 ```text
-MUST
+quantity = 2
 ```
 
-It is part of the MVP.
-
-## Parameters
-
-Typical parameters are:
+is satisfied by:
 
 ```text
-activityId
-resourceId
-resourceRequirementId
+[worker-1, worker-2]
 ```
 
-Conceptually:
-
-```kotlin
-RequiredResourceConstraint(
-    activityId: String,
-    resourceId: String,
-    resourceRequirementId: String? = null
-)
-```
-
-`resourceRequirementId` may be used when an activity contains multiple resource requirements and the required resource must satisfy one particular requirement.
-
-## Academic Example
-
-The activity:
+but not by:
 
 ```text
-Advanced Mathematics — 2A
+[worker-1]
 ```
 
-requires a teacher.
-
-Several teachers may normally be valid candidates, but this specific class must be taught by:
+or:
 
 ```text
-Teacher Ana
+[worker-1, worker-1]
 ```
 
-If the generated assignment selects Pedro instead:
+or:
 
 ```text
-RequiredResourceConstraint → violation
+[worker-1, worker-2, worker-3]
 ```
 
-## Work Shift Example
+### Candidate Resources
 
-A particular work assignment:
+If:
 
 ```text
-Monday Morning — Reception
+candidateResourceIds = null
 ```
 
-must be covered by:
+any Resource of the required type may satisfy the requirement.
+
+If a candidate set is configured, the selected Resources must belong to
+that set.
+
+### Academic Example
+
+An Activity requires:
 
 ```text
-Employee Laura
+resource type = TEACHER
+quantity = 1
 ```
 
-because Laura is responsible for opening reception.
+If its Assignment contains no teacher, the requirement is violated.
 
-If another employee is assigned:
+If it contains a Resource of a different type, the requirement is also
+violated.
+
+### Work Shift Example
+
+A work Activity requires:
 
 ```text
-RequiredResourceConstraint → violation
+resource type = WORKER
+quantity = 2
 ```
+
+The generated Assignment must contain exactly two distinct compatible
+workers.
+
+The same constraint therefore works without knowing whether Resources
+represent teachers, employees, machines, or another domain concept.
 
 ---
 
-# 6. MaximumAssignmentsConstraint
+## 8. LocationCapacityConstraint
 
-## Description
+### Description
 
-`MaximumAssignmentsConstraint` limits the number of assignments that a resource may receive during a planning period.
+`LocationCapacityConstraint` ensures that the selected Location provides
+enough capacity for the assigned Activity.
 
-The constraint can be used to enforce workload limits.
-
-## Type
+### Type
 
 ```text
 HARD
 ```
 
-## Priority
+An Activity may define:
 
 ```text
-MUST
+requiredLocationCapacity
 ```
 
-It is part of the MVP.
-
-## Parameters
-
-Typical parameters are:
+while a Location may define:
 
 ```text
-resourceId
-maximumAssignments
+capacity
 ```
 
-Conceptually:
+The constraint evaluates whether the selected Location satisfies the
+required capacity.
 
-```kotlin
-MaximumAssignmentsConstraint(
-    resourceId: String,
-    maximumAssignments: Int
-)
-```
+### Penalty
 
-Future versions could optionally introduce a scope such as day, week, or complete planning horizon.
+Capacity violations use the capacity shortage as their raw penalty.
 
-For the MVP, the limit should be interpreted over the complete configured planning horizon unless explicitly defined otherwise.
-
-## Academic Example
-
-Teacher Ana may teach at most:
+For example:
 
 ```text
-5 activities
+required capacity = 30
+location capacity = 25
 ```
 
-during the planning horizon.
-
-The generated schedule assigns her:
+produces:
 
 ```text
-7 activities
+shortage = 5
+raw penalty = 5
 ```
 
-The excess is:
+This allows the evaluation to distinguish between small and large
+capacity violations.
+
+### Academic Example
+
+A class requires capacity for:
 
 ```text
-7 - 5 = 2
+30
 ```
 
-Result:
+but the selected classroom has:
 
 ```text
-MaximumAssignmentsConstraint → violation
-```
-
-## Work Shift Example
-
-Employee Pedro may receive at most:
-
-```text
-5 shifts
-```
-
-during the planning horizon.
-
-The generated schedule assigns:
-
-```text
-6 shifts
+capacity = 20
 ```
 
 Result:
 
 ```text
-MaximumAssignmentsConstraint → violation
+LocationCapacityConstraint
+→ HARD violation
+→ raw penalty = 10
+```
+
+### Work Shift Example
+
+A training Activity requires capacity for 15 participants but is
+assigned to a Location with capacity 10.
+
+The same generic constraint detects the shortage.
+
+---
+
+## 9. SOFT Constraints
+
+SOFT constraints represent preferences and schedule quality objectives.
+
+Their violations contribute penalties to fitness but do not make the
+Schedule infeasible.
+
+The current SOFT catalogue contains:
+
+```text
+PreferredTimeSlotConstraint
+MaxConsecutiveConstraint
+BalancedWorkloadConstraint
 ```
 
 ---
 
-# 7. MinimumAssignmentsConstraint
+## 10. PreferredTimeSlotConstraint
 
-## Description
+### Description
 
-`MinimumAssignmentsConstraint` encourages a resource to receive at least a configured number of assignments.
+`PreferredTimeSlotConstraint` expresses preferences for assigning
+Activities to particular TimeSlots.
 
-It can be used to promote workload distribution.
-
-Because receiving fewer assignments does not necessarily make the schedule invalid, it is initially modelled as a soft constraint.
-
-## Type
+### Type
 
 ```text
 SOFT
 ```
 
-## Priority
-
-```text
-SHOULD
-```
-
-It is not required for the minimum MVP.
-
-## Parameters
-
-Typical parameters are:
-
-```text
-resourceId
-minimumAssignments
-```
+Preferences are configured by Activity.
 
 Conceptually:
 
-```kotlin
-MinimumAssignmentsConstraint(
-    resourceId: String,
-    minimumAssignments: Int
-)
+```text
+Activity A
+→ preferred TimeSlots
+   [slot-1, slot-2]
 ```
 
-## Academic Example
+### Evaluation
 
-The planning configuration prefers Teacher Ana to have at least:
+If Activity A is assigned to:
 
 ```text
-4 teaching sessions
+slot-1
 ```
 
-The generated schedule assigns her only:
+or:
 
 ```text
-2 sessions
+slot-2
 ```
 
-The schedule remains feasible but receives a soft penalty.
+no violation is produced.
 
-## Work Shift Example
-
-Employee Laura should receive at least:
+If it is assigned to another TimeSlot:
 
 ```text
-3 shifts
+one SOFT violation
+raw penalty = 1
 ```
 
-during the planning horizon.
+An Activity absent from the preference configuration has no preference
+and therefore produces no violation.
 
-The generated schedule assigns only:
+### Academic Example
+
+A Physical Education Activity prefers:
 
 ```text
-2 shifts
+afternoon-1
+afternoon-2
 ```
 
-Result:
+but is assigned to:
 
 ```text
-MinimumAssignmentsConstraint → soft violation
+morning-1
 ```
+
+The Schedule remains feasible but receives a SOFT penalty.
+
+### Work Shift Example
+
+A particular work Activity is preferably scheduled during one of a set
+of configured morning TimeSlots.
+
+Scheduling it outside those preferred TimeSlots produces the same
+generic SOFT violation.
 
 ---
 
-# 8. MaxConsecutiveConstraint
+## 11. MaxConsecutiveConstraint
 
-## Description
+### Description
 
-`MaxConsecutiveConstraint` discourages assigning a resource to too many consecutive activities or time slots.
+`MaxConsecutiveConstraint` discourages assigning a Resource to too many
+consecutive activities.
 
-It can improve schedule quality by reducing fatigue or overly concentrated workloads.
-
-## Type
+### Type
 
 ```text
 SOFT
 ```
 
-## Priority
+Two assignments are consecutive when:
 
 ```text
-SHOULD
+previousTimeSlot.end
+=
+nextTimeSlot.start
 ```
 
-It is not required for the minimum MVP.
+### Evaluation
 
-## Parameters
+Assignments are evaluated chronologically for each relevant Resource.
 
-Typical parameters are:
+If the number of consecutive assignments exceeds the configured
+maximum, the excess contributes to the SOFT penalty.
+
+### Example
+
+Suppose:
 
 ```text
-resourceId
-maximumConsecutiveAssignments
+maximum consecutive assignments = 3
 ```
 
-Conceptually:
-
-```kotlin
-MaxConsecutiveConstraint(
-    resourceId: String,
-    maximumConsecutiveAssignments: Int
-)
-```
-
-The implementation must determine consecutive assignments using the chronological order and boundaries of the configured `TimeSlot` objects.
-
-## Academic Example
-
-Teacher Pedro should teach no more than:
-
-```text
-3 consecutive classes
-```
-
-The generated timetable assigns:
+and a Resource receives:
 
 ```text
 09:00–10:00
@@ -590,546 +618,478 @@ The generated timetable assigns:
 12:00–13:00
 ```
 
-This produces four consecutive classes.
+The Resource has four consecutive assignments.
 
-Result:
+The configured maximum is exceeded, producing a SOFT penalty.
 
-```text
-MaxConsecutiveConstraint → soft violation
-```
+### Domain Independence
 
-## Work Shift Example
+In Academic Scheduling this may represent consecutive classes for a
+teacher.
 
-Employee Ana should not receive more than:
+In Work Shift Scheduling it may represent consecutive work periods for
+an employee.
 
-```text
-3 consecutive scheduled work periods
-```
-
-If four consecutive periods are assigned, the solution receives a penalty but remains feasible.
+The constraint itself only operates on generic Resources, Assignments,
+and TimeSlots.
 
 ---
 
-# 9. PreferredTimeSlotConstraint
+## 12. BalancedWorkloadConstraint
 
-## Description
+### Description
 
-`PreferredTimeSlotConstraint` expresses a preference for assigning an activity or resource to particular time slots.
+`BalancedWorkloadConstraint` encourages assignments to be distributed
+more evenly between configured Resources.
 
-It allows users to model preferences without making them mandatory.
-
-## Type
+### Type
 
 ```text
 SOFT
 ```
 
-## Priority
+### Workload Measure
+
+For the current implementation, workload is measured using the number
+of assignments associated with each configured Resource.
+
+For example:
 
 ```text
-SHOULD
+Resource A → 5 assignments
+Resource B → 3 assignments
+Resource C → 3 assignments
 ```
 
-It is not required for the minimum MVP.
+The workload difference is based on the maximum and minimum assignment
+counts.
 
-## Parameters
+### Evaluation
 
-Typical parameters are:
+The constraint produces a SOFT penalty when the workload difference
+exceeds the configured accepted balance.
 
-```text
-resourceId or activityId
-preferredTimeSlotIds
-```
+The constraint does not make an uneven Schedule infeasible.
 
-Conceptually:
+### Academic Example
 
-```kotlin
-PreferredTimeSlotConstraint(
-    resourceId: String? = null,
-activityId: String? = null,
-preferredTimeSlotIds: Set<String>
-)
-```
+Teaching activities should preferably be distributed reasonably evenly
+between a configured group of teachers.
 
-At least one target should be provided.
+A strongly unbalanced distribution receives a penalty.
 
-## Academic Example
+### Work Shift Example
 
-Teacher Ana prefers teaching during:
+Work assignments should preferably be distributed between a configured
+group of employees.
 
-```text
-09:00–12:00
-```
-
-A generated activity is assigned at:
-
-```text
-16:00–17:00
-```
-
-The schedule remains feasible but receives a soft penalty.
-
-Another example may associate the preference directly with an activity:
-
-```text
-Physical Education prefers afternoon periods.
-```
-
-## Work Shift Example
-
-Employee Laura prefers:
-
-```text
-Morning shifts
-```
-
-but receives an afternoon shift.
-
-Result:
-
-```text
-PreferredTimeSlotConstraint → soft violation
-```
-
-The scheduler may still choose the afternoon assignment if it produces a better overall solution.
+Again, the same constraint is reused without domain-specific logic.
 
 ---
 
-# 10. CapacityConstraint
+## 13. Constraint Evaluation
 
-## Description
+Every implemented constraint produces a `ConstraintResult`.
 
-`CapacityConstraint` ensures that a selected location has enough capacity for the activity assigned to it.
+Conceptually:
 
-This rule is useful for planning problems involving rooms or physical spaces.
+```text
+Constraint
+    ↓
+evaluate(Schedule)
+    ↓
+ConstraintViolation[]
+    ↓
+ConstraintResult
+```
 
-## Type
+A result provides:
+
+```text
+violationDetails
+violations
+rawPenalty
+weightedPenalty
+```
+
+where:
+
+```text
+rawPenalty =
+Σ individual violation penalties
+```
+
+and:
+
+```text
+weightedPenalty =
+rawPenalty × constraint weight
+```
+
+HARD and SOFT constraints use the same weighting formula.
+
+There is no hidden global HARD multiplier.
+
+Detailed evaluation semantics are documented in:
+
+```text
+docs/architecture/constraint-evaluation.md
+```
+
+---
+
+## 14. Constraint Catalogue and Fitness
+
+The implemented catalogue contributes to fitness as follows:
 
 ```text
 HARD
-```
-
-## Priority
-
-```text
-COULD
-```
-
-It is not part of the MVP.
-
-## Parameters
-
-Typical parameters are:
-
-```text
-activityId
-requiredCapacity
-```
-
-The selected `Location` provides:
-
-```text
-capacity
-```
-
-Conceptually:
-
-```kotlin
-CapacityConstraint(
-    activityId: String,
-    requiredCapacity: Int
-)
-```
-
-The rule evaluates:
-
-```text
-location.capacity >= requiredCapacity
-```
-
-## Academic Example
-
-Student group `1A` contains:
-
-```text
-30 students
-```
-
-but the assigned classroom has capacity for:
-
-```text
-20 people
-```
-
-Result:
-
-```text
-CapacityConstraint → violation
-```
-
-## Work Shift Example
-
-A training activity requires space for:
-
-```text
-15 employees
-```
-
-but the selected training room supports only:
-
-```text
-10 people
-```
-
-Result:
-
-```text
-CapacityConstraint → violation
-```
-
-Although more common in academic planning, the constraint remains generic and may apply to other planning scenarios.
-
----
-
-# 11. DifferentDayConstraint
-
-## Description
-
-`DifferentDayConstraint` encourages related activities to be scheduled on different days.
-
-It is useful when repeated or related activities should be distributed across the planning horizon rather than concentrated on the same day.
-
-## Type
-
-```text
-SOFT
-```
-
-## Priority
-
-```text
-COULD
-```
-
-It is not part of the MVP.
-
-## Parameters
-
-Typical parameters are:
-
-```text
-activityIds
-```
-
-Conceptually:
-
-```kotlin
-DifferentDayConstraint(
-    activityIds: Set<String>
-)
-```
-
-The constraint evaluates whether the targeted activities occur on different calendar days.
-
-## Academic Example
-
-Two Mathematics sessions for group `1A` should preferably occur on different days.
-
-The generated schedule places both sessions on:
-
-```text
-Monday
-```
-
-Result:
-
-```text
-DifferentDayConstraint → soft violation
-```
-
-A schedule with:
-
-```text
-Monday
-Wednesday
-```
-
-would satisfy the preference.
-
-## Work Shift Example
-
-Two training assignments for the same employee should preferably occur on different days.
-
-If both are scheduled on Tuesday:
-
-```text
-DifferentDayConstraint → soft violation
-```
-
-The same generic rule can therefore apply outside academic scheduling.
-
----
-
-# 12. MVP Constraint Set
-
-The MVP constraint catalogue is deliberately small.
-
-The mandatory constraints are:
-
-```text
-NoOverlapConstraint
-AvailabilityConstraint
-RequiredResourceConstraint
-MaximumAssignmentsConstraint
-```
-
-These four rules provide enough expressive power to generate meaningful schedules while keeping implementation complexity manageable.
-
-Together they ensure that:
-
-```text
-Resources are not double-booked
-        +
-Resources are assigned only when available
-        +
-Mandatory resource assignments are respected
-        +
-Resource workloads do not exceed configured limits
-```
-
-The MVP therefore focuses primarily on basic feasibility.
-
----
-
-# 13. Version 1.0 Extended Constraints
-
-If development time allows, the following SHOULD constraints may be included:
-
-```text
-MinimumAssignmentsConstraint
-MaxConsecutiveConstraint
-PreferredTimeSlotConstraint
-```
-
-These constraints improve schedule quality and user preferences without being required for basic feasibility.
-
-The optional COULD constraints are:
-
-```text
-CapacityConstraint
-DifferentDayConstraint
-```
-
-These provide useful additional modelling capabilities but are not required to demonstrate the core Genetic Planner functionality.
-
----
-
-# 14. Priority Summary
-
-The final priority structure is:
-
-```text
-MUST — MVP
 │
 ├── NoOverlapConstraint
 ├── AvailabilityConstraint
 ├── RequiredResourceConstraint
-└── MaximumAssignmentsConstraint
+└── LocationCapacityConstraint
+        │
+        ▼
+    hardPenalty
 
 
-SHOULD
+SOFT
 │
-├── MinimumAssignmentsConstraint
+├── PreferredTimeSlotConstraint
 ├── MaxConsecutiveConstraint
-└── PreferredTimeSlotConstraint
-
-
-COULD
-│
-├── CapacityConstraint
-└── DifferentDayConstraint
+└── BalancedWorkloadConstraint
+        │
+        ▼
+    softPenalty
 ```
+
+The Genetic Engine minimizes:
+
+```text
+fitness =
+hardPenalty + softPenalty
+```
+
+while feasibility is determined separately:
+
+```text
+HARD violations = 0
+→ feasible
+
+HARD violations > 0
+→ infeasible
+```
+
+Therefore fitness and feasibility are related but distinct concepts.
 
 ---
 
-# 15. HARD and SOFT Summary
+## 15. Genericity Across Templates
 
-## HARD
+The constraint catalogue remains independent from planning templates.
 
-```text
-NoOverlapConstraint
-AvailabilityConstraint
-RequiredResourceConstraint
-MaximumAssignmentsConstraint
-CapacityConstraint
-```
+| Constraint | Academic Scheduling | Work Shift Scheduling |
+| --- | --- | --- |
+| `NoOverlapConstraint` | Teacher cannot teach overlapping classes | Employee cannot perform overlapping assignments |
+| `AvailabilityConstraint` | Teacher only teaches when available | Employee only works when available |
+| `RequiredResourceConstraint` | Required teaching resources must be assigned | Required work resources must be assigned |
+| `LocationCapacityConstraint` | Classroom must have sufficient capacity | Training/work location must have sufficient capacity |
+| `PreferredTimeSlotConstraint` | Activity prefers particular teaching periods | Activity prefers particular work periods |
+| `MaxConsecutiveConstraint` | Limit consecutive teaching periods | Limit consecutive work periods |
+| `BalancedWorkloadConstraint` | Balance activities between teachers | Balance assignments between employees |
 
-A violation of these constraints affects schedule feasibility.
+These descriptions are template-level interpretations only.
 
-Conceptually:
-
-```text
-Hard violations = 0
-        ↓
-Feasible schedule
-
-Hard violations > 0
-        ↓
-Infeasible schedule
-```
-
-## SOFT
-
-```text
-MinimumAssignmentsConstraint
-MaxConsecutiveConstraint
-PreferredTimeSlotConstraint
-DifferentDayConstraint
-```
-
-Violations reduce solution quality but do not make the schedule infeasible.
+The constraint implementations operate exclusively on generic planning
+concepts.
 
 ---
 
-# 16. Genericity Across Templates
+## 16. Relationship with ResourceRequirement
 
-The constraint catalogue must remain independent from the selected planning template.
-
-For example:
-
-| Constraint         | Academic Scheduling                             | Work Shift Scheduling                            |
-| ------------------ | ----------------------------------------------- | ------------------------------------------------ |
-| NoOverlap          | Teacher cannot teach two classes simultaneously | Employee cannot work two overlapping assignments |
-| Availability       | Teacher only teaches when available             | Employee only works when available               |
-| RequiredResource   | A class must use a specific teacher             | A shift must use a specific employee             |
-| MaximumAssignments | Maximum teaching sessions                       | Maximum assigned shifts                          |
-| MinimumAssignments | Minimum teaching load                           | Minimum number of shifts                         |
-| MaxConsecutive     | Limit consecutive classes                       | Limit consecutive work periods                   |
-| PreferredTimeSlot  | Preferred teaching periods                      | Preferred shifts                                 |
-| Capacity           | Classroom capacity                              | Workplace/training-room capacity                 |
-| DifferentDay       | Separate repeated classes                       | Separate related work activities                 |
-
-The Genetic Engine does not need to understand any of these domain-specific interpretations.
-
-It operates only with:
-
-```text
-Constraint
-       ↓
-evaluate(Schedule)
-       ↓
-ConstraintResult
-```
-
----
-
-# 17. Relationship with ResourceRequirement
-
-`RequiredResourceConstraint` and `ResourceRequirement` represent different concepts.
+`ResourceRequirement` and `RequiredResourceConstraint` have different
+responsibilities.
 
 ### ResourceRequirement
 
-Defines the structural resources required by an activity.
+`ResourceRequirement` describes the Resources structurally required by
+an Activity.
 
-Example:
+For example:
 
 ```text
-Mathematics 1A
-requires:
-    1 TEACHER
-    1 STUDENT_GROUP
+Activity
+requires
+    resource type = TEACHER
+    quantity = 1
 ```
 
-It answers:
+It defines:
 
-> What type and quantity of resources does this activity need?
+```text
+What Resources does this Activity require?
+```
+
+Candidate generation uses this information when constructing possible
+AssignmentOptions.
 
 ### RequiredResourceConstraint
 
-Defines a mandatory assignment rule for a specific resource.
-
-Example:
-
-```text
-Mathematics 1A
-must use:
-    Teacher Ana
-```
+`RequiredResourceConstraint` evaluates whether the final Assignment
+actually satisfies those requirements.
 
 It answers:
 
-> Which particular resource must be selected?
+```text
+Does this Assignment correctly satisfy the Activity's
+ResourceRequirements?
+```
 
 Therefore:
 
 ```text
 ResourceRequirement
-        ↓
-Defines valid assignment structure
-
+        │
+        ├── describes structural requirements
+        │
+        ▼
+AssignmentCandidateGenerator
+        │
+        ▼
+Assignment
+        │
+        ▼
 RequiredResourceConstraint
-        ↓
-Restricts which concrete assignment is acceptable
+        │
+        └── verifies the final assignment
 ```
 
-This distinction allows both concepts to coexist without duplicating responsibilities.
+This keeps structural candidate generation and Schedule validation as
+separate responsibilities.
 
 ---
 
-# 18. Design Boundary
+## 17. Structural Validity vs Constraint Validity
 
-This catalogue defines:
+Not every constraint is used to remove candidate options before genetic
+optimization.
 
-* Supported constraint names.
-* Their purpose.
-* HARD or SOFT classification.
-* Implementation priority.
-* Required configuration parameters.
-* Academic examples.
-* Work Shift examples.
-* The MVP constraint subset.
+Candidate generation creates structurally possible AssignmentOptions.
 
-It does not yet define:
+The Genetic Algorithm may combine those options into a Schedule that
+violates planning constraints.
 
-* Exact penalty formulas.
-* Weight values.
-* Penalty aggregation.
-* Hard vs soft global weighting.
-* Fitness calculation.
-
-Those decisions belong to:
+For example:
 
 ```text
-#13 Design constraint evaluation and weighting
-#15 Design fitness function
+Activity A
+→ Resource R1
+→ Monday 09:00
+
+Activity B
+→ Resource R1
+→ Monday 09:00
 ```
+
+Both AssignmentOptions may individually be structurally valid.
+
+Together they produce:
+
+```text
+Schedule
+    ↓
+NoOverlapConstraint
+    ↓
+HARD violation
+```
+
+This separation is intentional.
+
+> Structural validity belongs to candidate generation; planning
+> feasibility belongs to constraint evaluation.
+
+It allows the Genetic Algorithm to explore infeasible schedules while
+using penalties to guide evolution toward better solutions.
 
 ---
 
-# 19. Catalogue Summary
+## 18. Extensibility
 
-The initial Genetic Planner constraint catalogue contains nine generic constraints:
+New constraints can be introduced by implementing the common
+`Constraint` abstraction.
 
-```text
-                    Constraint
-                        │
-          ┌─────────────┴─────────────┐
-          │                           │
-         HARD                        SOFT
-          │                           │
-    ┌─────┼──────────┐        ┌──────┼────────────┐
-    │     │          │        │      │            │
-NoOverlap Availability ...  Minimum  Max      Preferred
-                            Assign. Consecutive TimeSlot
-```
-
-The MVP requires four constraints:
+Conceptually:
 
 ```text
-NoOverlap
-Availability
-RequiredResource
-MaximumAssignments
+New Constraint
+      │
+      ▼
+implements Constraint
+      │
+      ▼
+evaluate(Schedule)
+      │
+      ▼
+ConstraintResult
 ```
 
-Additional constraints can be introduced without modifying the Genetic Engine because all implementations follow the common `Constraint` abstraction.
+The Genetic Engine does not require changes when a new constraint is
+introduced.
+
+This is an important extensibility property of the architecture.
+
+Possible future constraints include:
+
+```text
+MaximumAssignmentsConstraint
+MinimumAssignmentsConstraint
+DifferentDayConstraint
+```
+
+These are not part of the current implemented core catalogue.
+
+They should only be introduced if required by future planning scenarios
+or experimental evaluation.
+
+---
+
+## 19. Changes from the Initial Catalogue
+
+The constraint catalogue was refined during M2 as the generic planning
+domain and Genetic Engine were implemented.
+
+### MaximumAssignmentsConstraint
+
+The initial catalogue classified:
+
+```text
+MaximumAssignmentsConstraint
+```
+
+as a mandatory HARD constraint.
+
+It was not included in the final M2 core catalogue.
+
+The implemented workload-related SOFT objective is instead:
+
+```text
+BalancedWorkloadConstraint
+```
+
+A future `MaximumAssignmentsConstraint` may still be introduced if a
+validation scenario requires an explicit upper workload limit.
+
+### MinimumAssignmentsConstraint
+
+The initial catalogue considered:
+
+```text
+MinimumAssignmentsConstraint
+```
+
+as a SHOULD constraint.
+
+It was not implemented during M2.
+
+Workload distribution is currently represented through
+`BalancedWorkloadConstraint`.
+
+### CapacityConstraint
+
+The initial catalogue classified:
+
+```text
+CapacityConstraint
+```
+
+as an optional constraint.
+
+During domain and constraint implementation, capacity became part of
+the core catalogue as:
+
+```text
+LocationCapacityConstraint
+```
+
+The explicit name clarifies that the constraint evaluates the capacity
+of the selected Location.
+
+### MaxConsecutiveConstraint
+
+Initially classified as SHOULD, it was implemented during M2 and now
+forms part of the core SOFT catalogue.
+
+### PreferredTimeSlotConstraint
+
+Initially classified as SHOULD, it was implemented during M2 and now
+forms part of the core SOFT catalogue.
+
+### BalancedWorkloadConstraint
+
+`BalancedWorkloadConstraint` was introduced during implementation as a
+generic SOFT objective for improving workload distribution.
+
+It replaces the need for minimum-assignment balancing in the initial
+core implementation.
+
+### DifferentDayConstraint
+
+The initial catalogue identified:
+
+```text
+DifferentDayConstraint
+```
+
+as a possible extension.
+
+It remains unimplemented and outside the current core catalogue.
+
+---
+
+## 20. Current Catalogue Summary
+
+The implemented Genetic Planner constraint architecture is:
+
+```text
+                       Constraint
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+            HARD                        SOFT
+             │                           │
+    ┌────────┼─────────┐        ┌────────┼─────────┐
+    │        │         │        │        │         │
+NoOverlap Availability Required  Preferred Max    Balanced
+                      Resource   TimeSlot Consecutive Workload
+    │
+    └── LocationCapacity
+```
+
+More explicitly:
+
+```text
+HARD
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+├── RequiredResourceConstraint
+└── LocationCapacityConstraint
+
+SOFT
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint
+```
+
+All seven constraints:
+
+- Operate on the generic planning model.
+- Produce detailed `ConstraintResult` information.
+- Participate in weighted fitness evaluation.
+- Remain independent from Jenetics.
+- Remain independent from planning templates.
+- Can be reused across different scheduling domains.
+
+This catalogue provides the constraint foundation required by the
+Genetic Planner MVP while preserving the extensibility needed for
+future planning scenarios.

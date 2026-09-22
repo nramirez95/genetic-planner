@@ -1,32 +1,34 @@
-# Genetic Planner — Fitness Function Design
+# Genetic Planner — Fitness Function
 
 ## 1. Purpose
 
-This document defines the fitness function used by Genetic Planner to evaluate candidate schedules during the genetic optimization process.
+This document describes the fitness function implemented by Genetic
+Planner to evaluate candidate schedules during genetic optimization.
 
-The fitness function combines:
+The fitness model combines:
 
-* HARD constraint violations.
-* SOFT constraint violations.
-* Constraint weights.
+- HARD constraint penalties.
+- SOFT constraint penalties.
+- Constraint-specific weights.
+- Detailed constraint violations.
 
-The Genetic Algorithm uses this value to compare candidate schedules and progressively search for better solutions.
+The main optimization principle is:
 
-The main principle is:
+> Lower fitness values represent better schedules.
 
-> **Lower fitness values represent better schedules.**
+Fitness evaluation remains independent from Jenetics.
+
+Jenetics receives a numeric fitness value, while planning semantics and
+constraint evaluation remain in the domain layer.
 
 ---
 
-# 2. Fitness Function
+## 2. Fitness Model
 
-Every constraint produces a penalty according to:
+Every configured constraint evaluates a `Schedule` and produces a
+`ConstraintResult`.
 
-* Number of violations.
-* Severity of each violation.
-* Configured constraint weight.
-
-The total fitness is calculated as:
+The total fitness is:
 
 ```text
 Fitness =
@@ -47,8 +49,8 @@ Fitness(S) =
 For each constraint:
 
 ```text
-Constraint penalty =
-    raw penalty × weight
+weightedPenalty =
+    rawPenalty × weight
 ```
 
 Therefore:
@@ -60,858 +62,1034 @@ Fitness(S) =
     Σ(rawPenaltySoft × weightSoft)
 ```
 
+There is no additional global HARD multiplier in the fitness function.
+
+HARD and SOFT constraints use the same weighting mechanism.
+
+Their semantic difference is that HARD violations determine schedule
+feasibility.
+
 ---
 
-# 3. HARD Constraints
+## 3. ConstraintResult
+
+Each constraint returns a `ConstraintResult`:
+
+```kotlin
+data class ConstraintResult(
+    val constraintId: String,
+    val type: ConstraintType,
+    val violationDetails: List<ConstraintViolation>,
+    val weight: Double
+) {
+    val violations: Int
+        get() = violationDetails.size
+
+    val rawPenalty: Double
+        get() = violationDetails.sumOf { it.penalty }
+
+    val weightedPenalty: Double
+        get() = rawPenalty * weight
+}
+```
+
+The result preserves both:
+
+```text
+number of violations
+```
+
+and:
+
+```text
+penalty severity
+```
+
+These concepts are intentionally separate.
+
+A constraint may therefore produce several violations with different
+penalty values.
+
+---
+
+## 4. ConstraintViolation
+
+Individual violations are represented by:
+
+```kotlin
+data class ConstraintViolation(
+    val message: String,
+    val penalty: Double,
+    val relatedEntityIds: Set<String> = emptySet()
+)
+```
+
+Each violation provides:
+
+- A human-readable description.
+- A raw penalty.
+- The identifiers of related planning entities when applicable.
+
+This allows the fitness system to preserve explanatory information
+instead of reducing evaluation immediately to a scalar number.
+
+---
+
+## 5. Raw and Weighted Penalties
+
+For one constraint:
+
+```text
+rawPenalty
+=
+sum of individual violation penalties
+```
+
+and:
+
+```text
+weightedPenalty
+=
+rawPenalty × constraint weight
+```
+
+Example:
+
+```text
+PreferredTimeSlotConstraint
+
+Violation 1 → penalty 1
+Violation 2 → penalty 1
+Violation 3 → penalty 1
+
+rawPenalty = 3
+weight = 10
+
+weightedPenalty = 30
+```
+
+Another constraint may assign penalties according to severity rather
+than simply counting violations.
+
+For example, a capacity constraint can use the missing capacity as the
+penalty value.
+
+Therefore:
+
+> Violation count and penalty are related but are not interchangeable.
+
+---
+
+## 6. HARD Constraints
 
 HARD constraints represent mandatory planning rules.
 
-Examples include:
+The current implementation includes:
 
 ```text
 NoOverlapConstraint
 AvailabilityConstraint
 RequiredResourceConstraint
-MaximumAssignmentsConstraint
+LocationCapacityConstraint
 ```
 
-Violating a HARD constraint does not make the chromosome structurally invalid.
+A HARD violation does not make a genotype structurally invalid.
 
 Instead:
 
 ```text
-HARD violation
-      ↓
-Large penalty
-      ↓
-Worse fitness
-```
-
-This allows infeasible candidates to remain in the population while the Genetic Algorithm evolves toward feasible schedules.
-
----
-
-# 4. HARD Constraint Weighting
-
-HARD constraints receive a significantly larger penalty than SOFT constraints.
-
-For the MVP, the default HARD weight is:
-
-```text
-HARD_WEIGHT = 1000
-```
-
-Example:
-
-```text
-NoOverlapConstraint
-
-violations = 2
-weight = 1000
-
-penalty =
-2 × 1000
-=
-2000
-```
-
-Another example:
-
-```text
-AvailabilityConstraint
-
-violations = 1
-weight = 1000
-
-penalty =
-1 × 1000
-=
-1000
-```
-
-The purpose of this high value is to strongly guide evolution toward feasible schedules.
-
----
-
-# 5. SOFT Constraints
-
-SOFT constraints represent preferences or quality objectives.
-
-Examples include:
-
-```text
-PreferredTimeSlotConstraint
-MaxConsecutiveConstraint
-MinimumAssignmentsConstraint
-DifferentDayConstraint
-```
-
-A violation is allowed, but increases the fitness value.
-
-Example:
-
-```text
-PreferredTimeSlotConstraint
-
-violations = 4
-weight = 10
-
-penalty =
-4 × 10
-=
-40
-```
-
-SOFT weights can differ depending on their importance.
-
----
-
-# 6. Fitness Calculation
-
-The complete calculation follows:
-
-```text
-HARD penalties
-      +
-SOFT penalties
-      ↓
-Total Fitness
-```
-
-Example:
-
-```text
-Fitness
-
-HARD:
-  overlap             2 × 1000 = 2000
-  unavailable         1 × 1000 = 1000
-
-SOFT:
-  preference          4 × 10   =   40
-  consecutive         2 × 5    =   10
-
-TOTAL = 3050
-```
-
-Therefore:
-
-```text
-Fitness = 3050
-```
-
----
-
-# 7. Fitness Breakdown
-
-The system must preserve the complete penalty breakdown instead of returning only the final numeric value.
-
-Conceptually:
-
-```kotlin
-data class FitnessBreakdown(
-    val hardPenalty: Double,
-    val softPenalty: Double,
-    val totalPenalty: Double,
-    val constraintResults: List<ConstraintResult>
-)
-```
-
-This allows Genetic Planner to show:
-
-```text
-Total Fitness
-3050
-
-HARD
-├── No overlap:        2000
-└── Availability:      1000
-
-SOFT
-├── Preference:          40
-└── Consecutive:         10
-```
-
-This breakdown is useful for:
-
-* Fitness calculation.
-* Debugging.
-* Experimental evaluation.
-* Result explanation.
-* UI visualization.
-* Comparing generated schedules.
-
----
-
-# 8. Relationship with ScheduleEvaluation
-
-The Constraint Engine already provides:
-
-```kotlin
-data class ScheduleEvaluation(
-    val feasible: Boolean,
-    val hardViolationCount: Int,
-    val softViolationCount: Int,
-    val hardPenalty: Double,
-    val softPenalty: Double,
-    val totalPenalty: Double,
-    val constraintResults: List<ConstraintResult>
-)
-```
-
-The Genetic Algorithm can therefore obtain its fitness directly from:
-
-```text
-ScheduleEvaluation.totalPenalty
-```
-
-Conceptually:
-
-```kotlin
-fun fitness(schedule: Schedule): Double {
-    val evaluation = constraintEvaluator.evaluate(schedule)
-
-    return evaluation.totalPenalty
-}
-```
-
-The detailed information remains available through:
-
-```text
-ScheduleEvaluation.constraintResults
-```
-
----
-
-# 9. Calculation Flow
-
-The complete evaluation flow is:
-
-```text
 Genotype
     ↓
-Decoder
+structurally valid
     ↓
 Schedule
     ↓
-ConstraintEvaluator
+HARD violation
     ↓
-ConstraintResult[]
-    ↓
-Aggregate penalties
-    ↓
-ScheduleEvaluation
-    ↓
-totalPenalty
-    ↓
-Fitness
+infeasible Schedule
+    +
+weighted penalty
 ```
 
-Therefore the Genetic Algorithm itself does not need to know the implementation of individual constraints.
+This allows infeasible schedules to remain part of the evolutionary
+search space.
+
+The Genetic Algorithm can therefore evolve from infeasible schedules
+toward feasible ones.
 
 ---
 
-# 10. Minimization vs Maximization
+## 7. HARD Constraint Weighting
 
-Genetic Planner uses:
+HARD constraints do not receive an automatic or hidden global
+multiplier.
 
-```text
-MINIMIZATION
-```
-
-because penalties naturally express undesirable properties.
-
-Therefore:
-
-```text
-Lower fitness
-=
-Better schedule
-```
-
-For example:
-
-```text
-Schedule A → Fitness 3050
-Schedule B → Fitness 1020
-Schedule C → Fitness   20
-Schedule D → Fitness    0
-```
-
-The ordering is:
-
-```text
-D > C > B > A
-```
-
-in terms of schedule quality.
-
-The Genetic Algorithm therefore seeks:
-
-```text
-MIN Fitness
-```
-
----
-
-# 11. Ideal Fitness
-
-The ideal fitness is:
-
-```text
-0
-```
-
-because this means:
-
-```text
-HARD violations = 0
-SOFT violations = 0
-```
-
-Therefore:
-
-```text
-Fitness = 0
-```
-
-represents a schedule that satisfies every configured HARD and SOFT constraint.
-
-Conceptually:
-
-```text
-Fitness = 0
-      ↓
-No HARD violations
-      +
-No SOFT penalties
-      ↓
-Ideal solution
-```
-
-A fitness of zero can therefore also be used as an early termination condition.
-
----
-
-# 12. Feasibility
-
-Schedule feasibility remains determined specifically by HARD constraints:
-
-```text
-feasible =
-hardViolationCount == 0
-```
-
-This is independent from the total fitness.
-
-Example:
-
-```text
-Schedule A
-
-HARD penalty = 0
-SOFT penalty = 50
-
-Fitness = 50
-
-feasible = true
-```
-
-while:
-
-```text
-Schedule B
-
-HARD penalty = 1000
-SOFT penalty = 0
-
-Fitness = 1000
-
-feasible = false
-```
-
-Thus:
-
-```text
-Fitness
-```
-
-represents optimization quality, while:
-
-```text
-feasible
-```
-
-explicitly indicates whether all mandatory constraints are satisfied.
-
----
-
-# 13. Constraint Weights
-
-Every constraint has a configurable weight.
-
-Conceptually:
-
-```kotlin
-interface Constraint {
-    val id: String
-    val name: String
-    val type: ConstraintType
-    val weight: Double
-
-    fun evaluate(schedule: Schedule): ConstraintResult
-}
-```
-
-The resulting penalty is:
+Their weighted penalty is calculated exactly like any other constraint:
 
 ```text
 weightedPenalty =
 rawPenalty × weight
 ```
 
-The default weighting strategy for the MVP is:
+For example, a configured HARD constraint may use:
 
 ```text
-HARD constraints
-→ large weights, typically 1000
-
-SOFT constraints
-→ smaller weights according to preference importance
-```
-
-Example:
-
-```text
-NoOverlap
-weight = 1000
-
-Availability
-weight = 1000
-
-PreferredTimeSlot
-weight = 10
-
-MaxConsecutive
-weight = 5
-```
-
----
-
-# 14. Manual Example 1 — Infeasible Schedule
-
-Suppose a candidate schedule produces:
-
-```text
-HARD
-
-NoOverlapConstraint
-2 violations
-weight = 1000
-
-AvailabilityConstraint
-1 violation
 weight = 1000
 ```
 
-and:
+If it produces two violations with raw penalty `1` each:
 
 ```text
-SOFT
+rawPenalty = 2
 
-PreferredTimeSlotConstraint
-4 violations
-weight = 10
-
-MaxConsecutiveConstraint
-2 violations
-weight = 5
-```
-
-Calculation:
-
-```text
-NoOverlap
+weightedPenalty =
 2 × 1000
-= 2000
-
-Availability
-1 × 1000
-= 1000
-
-PreferredTimeSlot
-4 × 10
-= 40
-
-MaxConsecutive
-2 × 5
-= 10
+=
+2000
 ```
 
-Therefore:
+Large HARD weights such as `1000` are useful when the configuration
+should strongly guide evolution away from mandatory-rule violations.
 
-```text
-HARD penalty = 3000
-
-SOFT penalty = 50
-
-TOTAL FITNESS = 3050
-```
-
-The schedule is:
-
-```text
-feasible = false
-```
-
-because it contains HARD violations.
-
----
-
-# 15. Manual Example 2 — Feasible Schedule with Preferences Violated
-
-Consider:
-
-```text
-HARD
-
-NoOverlapConstraint
-0 violations
-
-AvailabilityConstraint
-0 violations
-```
-
-and:
-
-```text
-SOFT
-
-PreferredTimeSlotConstraint
-3 violations
-weight = 10
-
-MaxConsecutiveConstraint
-1 violation
-weight = 5
-```
-
-Calculation:
-
-```text
-HARD penalty
-= 0
-
-Preference
-3 × 10
-= 30
-
-Consecutive
-1 × 5
-= 5
-```
-
-Therefore:
-
-```text
-TOTAL FITNESS = 35
-```
-
-and:
-
-```text
-feasible = true
-```
-
-The schedule is valid but not ideal.
-
----
-
-# 16. Manual Example 3 — Ideal Schedule
-
-Consider:
-
-```text
-HARD violations = 0
-SOFT violations = 0
-```
-
-Then:
-
-```text
-HARD penalty = 0
-SOFT penalty = 0
-```
-
-Therefore:
-
-```text
-TOTAL FITNESS = 0
-```
-
-and:
-
-```text
-feasible = true
-```
-
-This is the ideal candidate.
-
----
-
-# 17. Manual Comparison
-
-Suppose the population contains:
-
-| Schedule | HARD penalty | SOFT penalty | Fitness | Feasible |
-| -------- | -----------: | -----------: | ------: | -------- |
-| A        |         3000 |           50 |    3050 | No       |
-| B        |         1000 |           20 |    1020 | No       |
-| C        |            0 |           35 |      35 | Yes      |
-| D        |            0 |           10 |      10 | Yes      |
-| E        |            0 |            0 |       0 | Yes      |
-
-Since the objective is minimization:
-
-```text
-E
-↓
-D
-↓
-C
-↓
-B
-↓
-A
-```
-
-Schedule E is the ideal solution.
-
----
-
-# 18. Fitness Diagram
-
-```text
-                        SCHEDULE
-                           │
-                           ▼
-                  ConstraintEvaluator
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-              ▼                         ▼
-       HARD Constraints          SOFT Constraints
-              │                         │
-              ▼                         ▼
-        Large penalties          Preference penalties
-              │                         │
-              └────────────┬────────────┘
-                           │
-                           ▼
-                    TOTAL FITNESS
-                           │
-                           ▼
-                       MINIMIZE
-                           │
-                           ▼
-                     Best Schedule
-
-                 Ideal Fitness = 0
-```
-
----
-
-# 19. Separation of Responsibilities
-
-The architecture remains:
-
-```text
-Constraint
-    ↓
-calculates violation penalty
-
-ConstraintEvaluator
-    ↓
-aggregates constraint results
-
-ScheduleEvaluation
-    ↓
-stores detailed evaluation
-
-Fitness Function
-    ↓
-returns totalPenalty
-
-Jenetics
-    ↓
-minimizes fitness
-```
-
----
-
-# 20. Genetic Engine Integration
-
-The Genetic Engine evaluates a candidate by:
-
-```text
-Genotype
-      ↓
-decode
-      ↓
-Schedule
-      ↓
-evaluate constraints
-      ↓
-ScheduleEvaluation
-      ↓
-totalPenalty
-      ↓
-fitness value
-```
-
-Conceptually:
-
-```kotlin
-fun fitness(genotype: Genotype<IntegerGene>): Double {
-    val schedule = decoder.decode(genotype)
-    val evaluation = constraintEvaluator.evaluate(schedule)
-
-    return evaluation.totalPenalty
-}
-```
-
-This preserves the separation between:
-
-```text
-Genetic representation
-```
-
-and:
-
-```text
-Planning evaluation
-```
-
----
-
-# 21. Fitness and Result Presentation
-
-The value used internally by the Genetic Algorithm is:
-
-```text
-totalPenalty
-```
-
-However, when presenting a generated schedule to the user, Genetic Planner should expose more information:
-
-```text
-Fitness: 35
-
-Feasible: Yes
-
-HARD violations: 0
-HARD penalty: 0
-
-SOFT violations: 4
-SOFT penalty: 35
-
-Breakdown:
-- Preferred Time Slot: 30
-- Maximum Consecutive: 5
-```
-
-This makes optimization results explainable.
-
----
-
-# 22. Scope
-
-The fitness function defines:
-
-* HARD penalty integration.
-* SOFT penalty integration.
-* Constraint weighting.
-* Total fitness.
-* Minimization.
-* Ideal fitness.
-* Detailed penalty breakdown.
-* Manual fitness examples.
-
-It does not define:
-
-* Population size.
-* Selection strategy.
-* Mutation probability.
-* Crossover probability.
-* Genetic operators.
-* Maximum number of generations.
-* Other termination conditions.
-
-Those decisions belong to the Genetic Algorithm configuration task.
-
----
-
-# 23. Design Decisions
-
-## F1 — Fitness represents penalty
-
-```text
-Lower = better
-```
-
-## F2 — Optimization uses minimization
-
-The Genetic Algorithm minimizes the total penalty.
-
-## F3 — HARD constraints receive large weights
-
-The MVP uses weights such as:
+However:
 
 ```text
 1000
 ```
 
-to strongly penalize mandatory-rule violations.
-
-## F4 — SOFT constraints use smaller configurable weights
-
-Their weight represents preference importance.
-
-## F5 — Total fitness combines HARD and SOFT penalties
-
-```text
-Fitness =
-HardPenalty + SoftPenalty
-```
-
-## F6 — Ideal fitness is zero
-
-```text
-Fitness = 0
-```
-
-means that no configured constraint produces a penalty.
-
-## F7 — Feasibility remains explicit
-
-```text
-feasible =
-hardViolationCount == 0
-```
-
-## F8 — Penalty breakdown is preserved
-
-The system does not store only the final scalar value.
-
-## F9 — Constraint evaluation remains outside Jenetics
-
-Jenetics receives the calculated fitness but does not implement planning rules.
+is a configuration choice, not a constant built into the fitness
+algorithm.
 
 ---
 
-# 24. Summary
+## 8. SOFT Constraints
 
-The Genetic Planner fitness function is:
+SOFT constraints represent preferences and optimization objectives.
+
+The current implementation includes:
+
+```text
+PreferredTimeSlotConstraint
+MaxConsecutiveConstraint
+BalancedWorkloadConstraint
+```
+
+SOFT violations are allowed and do not make the Schedule infeasible.
+
+They increase the fitness according to:
+
+```text
+rawPenalty × weight
+```
+
+Example:
+
+```text
+PreferredTimeSlotConstraint
+
+3 violations
+raw penalty = 3
+weight = 10
+
+weighted penalty = 30
+```
+
+Different SOFT constraints can use different weights according to their
+relative importance.
+
+---
+
+## 9. ConstraintEvaluator
+
+The aggregation of constraint results is implemented by:
+
+```text
+ConstraintEvaluator
+```
+
+Conceptually:
+
+```text
+Schedule
+    │
+    ▼
+Configured Constraints
+    │
+    ▼
+ConstraintResult[]
+    │
+    ├── HARD results
+    │       ↓
+    │   hardPenalty
+    │
+    └── SOFT results
+            ↓
+        softPenalty
+            │
+            ▼
+    ScheduleEvaluation
+```
+
+The evaluator:
+
+1. Evaluates every configured constraint.
+2. Collects all `ConstraintResult` objects.
+3. Sums weighted HARD penalties.
+4. Sums weighted SOFT penalties.
+5. Creates a `ScheduleEvaluation`.
+
+The Genetic Algorithm does not implement individual planning rules.
+
+---
+
+## 10. ScheduleEvaluation
+
+The implemented aggregate model is:
+
+```kotlin
+data class ScheduleEvaluation(
+    val hardPenalty: Double,
+    val softPenalty: Double,
+    val constraintResults: List<ConstraintResult>
+) {
+    val totalPenalty: Double
+        get() = hardPenalty + softPenalty
+
+    val fitness: Double
+        get() = totalPenalty
+
+    val feasible: Boolean
+        get() = constraintResults
+            .filter { it.type == ConstraintType.HARD }
+            .none { it.violations > 0 }
+}
+```
+
+Only the fundamental aggregate values and detailed results are stored.
+
+The following values are derived:
+
+```text
+totalPenalty
+fitness
+feasible
+```
+
+This prevents duplicated state and keeps `ScheduleEvaluation` as the
+single source of truth for optimization evaluation.
+
+---
+
+## 11. Fitness
+
+The fitness value is directly derived from the evaluation:
+
+```text
+fitness =
+totalPenalty
+```
+
+and:
+
+```text
+totalPenalty =
+hardPenalty + softPenalty
+```
+
+Therefore:
+
+```text
+fitness =
+hardPenalty + softPenalty
+```
+
+The Genetic Engine obtains fitness through:
+
+```text
+ScheduleEvaluation.fitness
+```
+
+rather than implementing a second fitness calculation.
+
+---
+
+## 12. Feasibility
+
+Schedule feasibility is determined exclusively by HARD constraint
+violations.
+
+The implemented rule is conceptually:
+
+```text
+feasible =
+no HARD ConstraintResult contains violations
+```
+
+This is intentionally not:
+
+```text
+hardPenalty == 0
+```
+
+because penalty and feasibility represent different concepts.
+
+For example, consider a HARD constraint configured with:
+
+```text
+weight = 0
+```
+
+that produces one violation.
+
+Its numeric contribution is:
+
+```text
+rawPenalty × weight
+=
+1 × 0
+=
+0
+```
+
+but the Schedule remains:
+
+```text
+feasible = false
+```
+
+because a HARD rule was violated.
+
+This separation ensures that constraint semantics are not accidentally
+changed by their numeric weight.
+
+---
+
+## 13. Feasible Schedule with SOFT Penalties
+
+Consider:
+
+```text
+HARD violations = 0
+hardPenalty = 0
+
+SOFT penalty = 35
+```
+
+Then:
+
+```text
+fitness = 35
+feasible = true
+```
+
+The Schedule satisfies all mandatory rules but does not satisfy all
+preferences.
+
+---
+
+## 14. Infeasible Schedule
+
+Consider:
+
+```text
+HARD violations > 0
+hardPenalty = 1000
+
+SOFT penalty = 20
+```
+
+Then:
+
+```text
+fitness = 1020
+feasible = false
+```
+
+The Schedule remains part of the search space, but its HARD violations
+make it infeasible.
+
+---
+
+## 15. Minimization
+
+Genetic Planner models fitness as a penalty.
+
+Therefore:
+
+```text
+lower fitness
+=
+better optimization result
+```
+
+The Jenetics Engine is configured with:
+
+```text
+Optimize.MINIMUM
+```
+
+Conceptually:
+
+```text
+Schedule A → fitness 3050
+Schedule B → fitness 1020
+Schedule C → fitness   35
+Schedule D → fitness   10
+Schedule E → fitness    0
+```
+
+The Genetic Algorithm attempts to minimize this value.
+
+---
+
+## 16. Ideal Fitness
+
+When all configured constraint penalties are zero:
+
+```text
+hardPenalty = 0
+softPenalty = 0
+```
+
+then:
+
+```text
+fitness = 0
+```
+
+For the normal positive-weight configurations used by Genetic Planner,
+this represents a candidate without penalized HARD or SOFT violations.
+
+However, feasibility is still derived independently from HARD
+violations rather than inferred from the numeric fitness value.
+
+The current Genetic Engine does not use fitness zero as an early
+termination condition.
+
+Evolution currently stops according to the configured fixed generation
+limit.
+
+---
+
+## 17. Fitness Evaluation During Evolution
+
+Jenetics operates on:
+
+```text
+Genotype<IntegerGene>
+```
+
+Planning constraints operate on:
+
+```text
+Schedule
+```
+
+The adaptation process is therefore:
+
+```text
+Genotype
+    │
+    ▼
+ScheduleGenotypeCodec.decode()
+    │
+    ▼
+Schedule
+    │
+    ▼
+ConstraintEvaluator.evaluate()
+    │
+    ▼
+ScheduleEvaluation
+    │
+    ▼
+fitness
+    │
+    ▼
+Jenetics
+```
+
+Conceptually:
+
+```kotlin
+val schedule = codec.decode(genotype)
+
+val fitness =
+    constraintEvaluator
+        .evaluate(schedule)
+        .fitness
+```
+
+This is the fitness function supplied to the Jenetics Engine.
+
+---
+
+## 18. Separation of Responsibilities
+
+The implemented architecture separates four responsibilities.
+
+### Constraint
+
+A Constraint knows how to identify violations of one planning rule.
+
+```text
+Schedule
+    ↓
+Constraint
+    ↓
+ConstraintResult
+```
+
+### ConstraintResult
+
+A ConstraintResult stores detailed violations and calculates:
+
+```text
+violations
+rawPenalty
+weightedPenalty
+```
+
+### ConstraintEvaluator
+
+The evaluator executes all configured constraints and aggregates their
+weighted penalties.
+
+### ScheduleEvaluation
+
+The aggregate result exposes:
+
+```text
+hardPenalty
+softPenalty
+totalPenalty
+fitness
+feasible
+constraintResults
+```
+
+### JeneticsEngine
+
+Jenetics only consumes:
+
+```text
+fitness: Double
+```
+
+and minimizes it.
+
+It does not know how planning constraints are implemented.
+
+---
+
+## 19. Penalty Breakdown
+
+The system preserves the complete evaluation instead of returning only
+the scalar fitness value.
+
+For example:
+
+```text
+Fitness: 3050
+Feasible: false
+
+HARD
+├── NoOverlap:        2000
+└── Availability:     1000
+
+SOFT
+├── PreferredTime:      40
+└── MaxConsecutive:     10
+```
+
+This information can be used for:
+
+- Debugging.
+- Experimentation.
+- Result explanation.
+- UI visualization.
+- Comparing generated schedules.
+
+`OptimizationResult` preserves the complete `ScheduleEvaluation`, so
+this information remains available after optimization finishes.
+
+---
+
+## 20. Manual Example
+
+Consider the following constraint results.
+
+### HARD
+
+```text
+NoOverlapConstraint
+
+2 violations
+raw penalty = 2
+weight = 1000
+weighted penalty = 2000
+```
+
+```text
+AvailabilityConstraint
+
+1 violation
+raw penalty = 1
+weight = 1000
+weighted penalty = 1000
+```
+
+### SOFT
+
+```text
+PreferredTimeSlotConstraint
+
+4 violations
+raw penalty = 4
+weight = 10
+weighted penalty = 40
+```
+
+```text
+MaxConsecutiveConstraint
+
+2 violations
+raw penalty = 2
+weight = 5
+weighted penalty = 10
+```
+
+The aggregate values are:
+
+```text
+hardPenalty =
+2000 + 1000
+=
+3000
+```
+
+```text
+softPenalty =
+40 + 10
+=
+50
+```
+
+Therefore:
+
+```text
+fitness =
+3000 + 50
+=
+3050
+```
+
+and:
+
+```text
+feasible = false
+```
+
+because HARD violations are present.
+
+---
+
+## 21. Fitness and OptimizationResult
+
+After evolution, the best genotype is decoded and evaluated again.
+
+The Genetic Engine returns:
+
+```text
+OptimizationResult
+```
+
+containing the resulting:
+
+```text
+Schedule
+ScheduleEvaluation
+```
+
+and execution statistics.
+
+The result exposes derived properties including:
+
+```text
+fitness
+feasible
+hardPenalty
+softPenalty
+constraintResults
+```
+
+The evaluation therefore remains available outside the Jenetics
+evolution process without duplicating the fitness calculation.
+
+---
+
+## 22. Fitness Diagram
+
+```text
+                      Genotype
+                         │
+                         ▼
+              ScheduleGenotypeCodec
+                         │
+                         ▼
+                       Schedule
+                         │
+                         ▼
+                ConstraintEvaluator
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+      HARD ConstraintResult  SOFT ConstraintResult
+              │                     │
+              ▼                     ▼
+        hardPenalty           softPenalty
+              │                     │
+              └──────────┬──────────┘
+                         │
+                         ▼
+                ScheduleEvaluation
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+           fitness               feasible
+              │
+              ▼
+       Jenetics MINIMUM
+```
+
+---
+
+## 23. Implementation Decisions
+
+### F1 — Fitness represents penalty
+
+```text
+Lower = better
+```
+
+The Genetic Algorithm minimizes the total weighted penalty.
+
+### F2 — HARD and SOFT use the same penalty formula
+
+Both use:
+
+```text
+rawPenalty × weight
+```
+
+There is no hidden HARD multiplier.
+
+### F3 — HARD constraints determine feasibility
+
+A Schedule is feasible only when no HARD constraint reports violations.
+
+### F4 — Feasibility is not derived from hardPenalty
+
+The implementation examines HARD violations directly.
+
+This preserves correct semantics even when a HARD constraint has zero
+weight.
+
+### F5 — Violation count and penalty are separate concepts
+
+`violations` counts violation details.
+
+`rawPenalty` sums their individual penalty values.
+
+### F6 — ScheduleEvaluation is the fitness source of truth
+
+Fitness is exposed as:
+
+```text
+ScheduleEvaluation.fitness
+```
+
+and is derived from:
+
+```text
+hardPenalty + softPenalty
+```
+
+### F7 — Detailed results are preserved
+
+The system keeps every `ConstraintResult` and `ConstraintViolation`
+instead of retaining only the scalar fitness.
+
+### F8 — Constraint evaluation remains outside Jenetics
+
+Jenetics receives the final numeric fitness but contains no planning
+constraint logic.
+
+### F9 — Optimization uses minimization
+
+The Jenetics Engine uses:
+
+```text
+Optimize.MINIMUM
+```
+
+### F10 — Zero fitness is not a stopping criterion
+
+Although zero represents the ideal numeric penalty, the current engine
+runs until its configured generation limit.
+
+---
+
+## 24. Deviations from Initial Design
+
+The initial fitness design was largely preserved during implementation,
+but several details were refined.
+
+### No global HARD_WEIGHT constant
+
+The initial design described:
+
+```text
+HARD_WEIGHT = 1000
+```
+
+as the default HARD weighting mechanism.
+
+The implementation does not contain a global HARD multiplier.
+
+Instead, every constraint owns its own:
+
+```text
+weight
+```
+
+and both HARD and SOFT penalties use:
+
+```text
+rawPenalty × weight
+```
+
+Values such as `1000` remain useful configuration choices for HARD
+constraints but are not embedded in the fitness algorithm.
+
+### ScheduleEvaluation was simplified
+
+The initial design proposed storing values such as:
+
+```text
+feasible
+hardViolationCount
+softViolationCount
+totalPenalty
+```
+
+directly in the aggregate evaluation object.
+
+The implemented model stores:
+
+```text
+hardPenalty
+softPenalty
+constraintResults
+```
+
+and derives:
+
+```text
+totalPenalty
+fitness
+feasible
+```
+
+This reduces duplicated state.
+
+### Feasibility semantics were strengthened
+
+The initial design conceptually described feasibility as:
+
+```text
+hardViolationCount == 0
+```
+
+The implementation derives the same semantic result directly from
+HARD `ConstraintResult` objects.
+
+It does not use numeric penalty as a feasibility proxy.
+
+### FitnessBreakdown was not introduced
+
+The initial design proposed a separate conceptual:
+
+```text
+FitnessBreakdown
+```
+
+The implemented `ScheduleEvaluation` already provides the required
+aggregate and detailed information.
+
+A separate model was therefore unnecessary.
+
+### Zero-fitness early termination was not implemented
+
+The initial design identified:
+
+```text
+fitness = 0
+```
+
+as a possible early termination condition.
+
+The current Jenetics Engine uses a fixed generation limit instead.
+
+This keeps execution behavior predictable and directly aligned with the
+configured GA presets.
+
+### Implemented constraint catalogue changed
+
+Some constraints mentioned during the initial design were not part of
+the final M2 implementation, while others were introduced.
+
+The implemented HARD constraints are:
+
+```text
+NoOverlapConstraint
+AvailabilityConstraint
+RequiredResourceConstraint
+LocationCapacityConstraint
+```
+
+The implemented SOFT constraints are:
+
+```text
+PreferredTimeSlotConstraint
+MaxConsecutiveConstraint
+BalancedWorkloadConstraint
+```
+
+---
+
+## 25. Current Limitations
+
+The current fitness model intentionally does not implement:
+
+- Multi-objective optimization.
+- Pareto-front optimization.
+- Automatic constraint-weight tuning.
+- Adaptive weights during evolution.
+- Lexicographic HARD-before-SOFT optimization.
+- Dynamic fitness normalization.
+
+The current MVP uses a single scalar weighted penalty because it keeps
+the optimization model simple, explainable, and compatible with the
+generic constraint architecture.
+
+---
+
+## 26. Summary
+
+The implemented fitness function is:
 
 ```text
 Fitness(S) =
@@ -920,48 +1098,56 @@ Fitness(S) =
     Σ SOFT weighted penalties
 ```
 
-Example:
+where:
 
 ```text
-Fitness
-
-HARD:
-  overlap             2 × 1000 = 2000
-  unavailable         1 × 1000 = 1000
-
-SOFT:
-  preference          4 × 10   =   40
-  consecutive         2 × 5    =   10
-
-TOTAL = 3050
-```
-
-The optimization objective is:
-
-```text
-MINIMIZE Fitness
+weightedPenalty =
+rawPenalty × weight
 ```
 
 and:
 
 ```text
-Ideal Fitness = 0
+rawPenalty =
+Σ individual ConstraintViolation penalties
 ```
 
-The complete flow is:
+The optimization objective is:
+
+```text
+MINIMIZE fitness
+```
+
+The complete evaluation flow is:
 
 ```text
 Genotype
     ↓
+ScheduleGenotypeCodec
+    ↓
 Schedule
     ↓
-Constraint Evaluation
+ConstraintEvaluator
     ↓
-HARD penalties
-+
-SOFT penalties
+ConstraintResult[]
     ↓
-Fitness
+ScheduleEvaluation
+    ├── hardPenalty
+    ├── softPenalty
+    ├── totalPenalty
+    ├── fitness
+    └── feasible
     ↓
-MINIMIZE
+Jenetics
+    ↓
+Optimize.MINIMUM
 ```
+
+The central principle is:
+
+> Fitness measures optimization penalty, while HARD constraint
+> violations determine feasibility.
+
+This separation keeps the Genetic Algorithm generic while preserving
+the semantic distinction between mandatory planning rules and
+optimization preferences.

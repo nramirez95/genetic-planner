@@ -1,156 +1,260 @@
 @startuml
-title Genetic Planner - Generic Domain Model
+title Genetic Planner — Generic Domain Model
 
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
 
-package "Planning Domain" {
+' =========================================================
+' Planning Problem
+' =========================================================
 
-    class PlanningProblem {
-        + id: String
-        + name: String
-        + templateType: String?
-    }
-
-    class PlanningHorizon {
-        + start: LocalDateTime
-        + end: LocalDateTime
-    }
-
-    class ResourceType {
-        + id: String
-        + name: String
-    }
-
-    class Resource {
-        + id: String
-        + name: String
-        + typeId: String
-        + attributes: Map<String, String>
-    }
-
-    class Activity {
-        + id: String
-        + name: String
-        + type: String?
-        + allowedTimeSlotIds: Set<String>?
-        + allowedLocationIds: Set<String>?
-        + attributes: Map<String, String>
-    }
-
-    class ResourceRequirement {
-        + id: String
-        + resourceTypeId: String
-        + quantity: Int
-        + candidateResourceIds: Set<String>?
-    }
-
-    class TimeSlot {
-        + id: String
-        + start: LocalDateTime
-        + end: LocalDateTime
-        + label: String?
-    }
-
-    class Location {
-        + id: String
-        + name: String
-        + type: String?
-        + capacity: Int?
-        + attributes: Map<String, String>
-    }
-
-    abstract class Constraint {
-        + type: ConstraintType
-        + weight: Double
-    }
-
-    enum ConstraintType {
-        HARD
-        SOFT
-    }
-
-    class Schedule {
-        + planningProblemId: String
-    }
-
-    class Assignment {
-        + activityId: String
-        + timeSlotId: String
-        + resourceAssignments: Map<String, List<String>>
-        + locationId: String?
-    }
-
-    class PlanningResult {
-        + fitness: Double
-        + hardViolations: Int
-        + softViolations: Int
-        + generations: Long
-        + executionTimeMs: Long
-    }
+class PlanningProblem {
+    +id: String
+    +name: String
+    +templateType: String?
 }
 
-PlanningProblem "1" *-- "1" PlanningHorizon : planningHorizon
-PlanningProblem "1" *-- "0..*" ResourceType : resourceTypes
-PlanningProblem "1" *-- "0..*" Resource : resources
-PlanningProblem "1" *-- "1..*" Activity : activities
-PlanningProblem "1" *-- "1..*" TimeSlot : timeSlots
-PlanningProblem "1" *-- "0..*" Location : locations
-PlanningProblem "1" *-- "0..*" Constraint : constraints
+class PlanningHorizon {
+    +start: LocalDateTime
+    +end: LocalDateTime
+}
 
-Resource --> ResourceType : type
+class ResourceType {
+    +id: String
+    +name: String
+}
 
-Activity "1" *-- "0..*" ResourceRequirement : requirements
-ResourceRequirement --> ResourceType : required type
-ResourceRequirement --> "0..*" Resource : candidates
+class Resource {
+    +id: String
+    +name: String
+    +typeId: String
+    +attributes: Map<String, String>
+}
 
-Activity --> "0..*" TimeSlot : allowed slots
-Activity --> "0..*" Location : allowed locations
+class Activity {
+    +id: String
+    +name: String
+    +type: String?
+    +allowedTimeSlotIds: Set<String>?
+    +allowedLocationIds: Set<String>?
+    +requiredLocationCapacity: Int?
+    +attributes: Map<String, String>
+}
 
-Constraint --> ConstraintType
+class ResourceRequirement {
+    +id: String
+    +resourceTypeId: String
+    +quantity: Int
+    +candidateResourceIds: Set<String>?
+}
 
-Schedule "1" *-- "1..*" Assignment : assignments
-Schedule --> PlanningProblem : solves
+class TimeSlot {
+    +id: String
+    +start: LocalDateTime
+    +end: LocalDateTime
+    +label: String?
+}
 
-Assignment --> "1" Activity : activity
-Assignment --> "1" TimeSlot : time slot
-Assignment --> "0..*" Resource : assigned resources
-Assignment --> "0..1" Location : location
+class Location {
+    +id: String
+    +name: String
+    +type: String?
+    +capacity: Int?
+    +attributes: Map<String, String>
+}
 
-PlanningResult "1" *-- "1" Schedule : schedule
+
+' =========================================================
+' Constraint Model
+' =========================================================
+
+interface Constraint {
+    +id: String
+    +name: String
+    +type: ConstraintType
+    +weight: Double
+    +evaluate(schedule: Schedule): ConstraintResult
+}
+
+enum ConstraintType {
+    HARD
+    SOFT
+}
+
+class ConstraintResult {
+    +constraintId: String
+    +type: ConstraintType
+    +violationDetails: List<ConstraintViolation>
+    +weight: Double
+    --
+    +violations: Int
+    +rawPenalty: Double
+    +weightedPenalty: Double
+}
+
+class ConstraintViolation {
+    +message: String
+    +penalty: Double
+    +relatedEntityIds: Set<String>
+}
+
+
+' =========================================================
+' Schedule
+' =========================================================
+
+class Schedule {
+    +planningProblemId: String
+    +assignments: List<Assignment>
+}
+
+class Assignment {
+    +activityId: String
+    +timeSlotId: String
+    +resourceAssignments: Map<String, List<String>>
+    +locationId: String?
+}
+
+
+' =========================================================
+' Planning Problem Relationships
+' =========================================================
+
+PlanningProblem "1" *-- "1" PlanningHorizon
+PlanningProblem "1" *-- "0..*" ResourceType
+PlanningProblem "1" *-- "0..*" Resource
+PlanningProblem "1" *-- "0..*" Activity
+PlanningProblem "1" *-- "0..*" TimeSlot
+PlanningProblem "1" *-- "0..*" Location
+PlanningProblem "1" *-- "0..*" Constraint
+
+Activity "1" *-- "0..*" ResourceRequirement
+
+
+' =========================================================
+' Reference Relationships
+' =========================================================
+
+Resource ..> ResourceType : typeId
+
+ResourceRequirement ..> ResourceType : resourceTypeId
+ResourceRequirement ..> Resource : candidateResourceIds
+
+Activity ..> TimeSlot : allowedTimeSlotIds
+Activity ..> Location : allowedLocationIds
+
+Constraint --> ConstraintType : type
+Constraint ..> Schedule : evaluates
+Constraint ..> ConstraintResult : produces
+
+ConstraintResult --> ConstraintType : type
+ConstraintResult "1" *-- "0..*" ConstraintViolation
+
+
+' =========================================================
+' Schedule Relationships
+' =========================================================
+
+Schedule "1" *-- "0..*" Assignment
+
+Schedule ..> PlanningProblem : planningProblemId
+
+Assignment ..> Activity : activityId
+Assignment ..> TimeSlot : timeSlotId
+Assignment ..> ResourceRequirement : resourceAssignments keys
+Assignment ..> Resource : resourceAssignments values
+Assignment ..> Location : locationId
+
+
+' =========================================================
+' Notes
+' =========================================================
+
+note right of PlanningProblem
+  Root of the generic planning domain.
+
+  templateType is application/template
+  metadata only.
+
+  The Genetic Engine must never branch
+  on templateType.
+end note
 
 note right of Activity
-  An Activity is an atomic
-  scheduling unit.
+  One Activity represents one atomic
+  schedulable unit.
 
-  Each Activity produces
-  exactly one Assignment.
+  One Activity = one genetic decision.
+
+  Each Activity produces exactly one
+  Assignment in a complete Schedule.
 end note
 
-note right of TimeSlot
-  TimeSlot duration may vary.
+note right of ResourceRequirement
+  quantity represents the exact number
+  of distinct Resources required.
 
-  Academic example:
-  09:00 - 10:00
-
-  Work example:
-  08:00 - 16:00
+  candidateResourceIds:
+  null      = unrestricted
+  empty set = explicitly none
 end note
 
-note bottom of Resource
-  Resource is domain-independent.
+note right of Activity
+  allowedTimeSlotIds / allowedLocationIds:
 
-  Examples:
-  - Teacher
-  - Student Group
-  - Employee
-  - Machine
+  null      = unrestricted
+  empty set = explicitly none
+end note
+
+note right of Location
+  capacity is intrinsic Location data.
+
+  Activity.requiredLocationCapacity
+  defines the required capacity.
+
+  Sufficiency is evaluated by
+  LocationCapacityConstraint.
+end note
+
+note bottom of Assignment
+  resourceAssignments maps:
+
+  ResourceRequirement.id
+          ->
+  List<Resource.id>
+end note
+
+note bottom of Schedule
+  Schedule contains planning decisions only.
+
+  Fitness, feasibility, penalties,
+  constraint results and execution statistics
+  belong to evaluation / OptimizationResult.
 end note
 
 note bottom of Constraint
-  Detailed constraint hierarchy
-  will be defined separately
-  in constraints.puml
+  Constraints remain independent
+  from Jenetics.
+
+  HARD constraints affect feasibility.
+  HARD and SOFT constraints contribute
+  weighted penalties to fitness.
 end note
+
+
+' =========================================================
+' Domain Boundary
+' =========================================================
+
+package "Outside Core Domain" <<Rectangle>> {
+    class "Planning Templates" as Templates
+    class "Genetic Engine" as GeneticEngine
+    class "Persistence Adapters" as Persistence
+}
+
+Templates ..> PlanningProblem : creates
+GeneticEngine ..> PlanningProblem : consumes
+GeneticEngine ..> Schedule : produces
+Persistence ..> PlanningProblem : maps
 
 @enduml

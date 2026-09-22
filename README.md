@@ -13,11 +13,28 @@ This project is being developed as a Final Degree Project (TFG) in Computer Engi
 ### Current
 
 - Generic planning domain model.
-- Hard and soft constraint model.
-- Weighted penalty-based fitness model.
-- Genetic representation based on one scheduling decision per activity.
-- Genetic algorithm configuration with predefined optimization profiles.
-- Jenetics 9.1.0 proof of concept.
+- Planning problem validation.
+- Generic Schedule and Assignment model.
+- Hard and soft constraint evaluation model.
+- Implemented hard constraints:
+    - Resource overlap.
+    - Resource availability.
+    - Required resources.
+    - Location capacity.
+- Implemented soft constraints:
+    - Preferred time slots.
+    - Maximum consecutive assignments.
+    - Workload balance.
+- Weighted penalty-based fitness evaluation.
+- Assignment candidate generation.
+- Jenetics genotype encoding and decoding.
+- Genetic schedule generation and optimization.
+- Predefined FAST, BALANCED and EXHAUSTIVE optimization profiles.
+- Deterministic genetic algorithm execution using reproducible random seeds.
+- Optimization results with fitness, feasibility, constraint breakdown and execution statistics.
+- Genetic Engine unit and integration tests.
+- Sample planning datasets for feasible and infeasible scenarios.
+- Initial Genetic Engine experiment comparing the optimization presets.
 - Template-based architecture for different planning domains.
 - Academic scheduling template design.
 - Layered modular-monolith application architecture.
@@ -30,15 +47,15 @@ This project is being developed as a Final Degree Project (TFG) in Computer Engi
 
 ### Planned for the MVP
 
-- Planning problem creation and configuration.
+- Planning problem creation and configuration through the web application.
 - Resource, activity, time-slot and location management.
-- Constraint configuration.
-- Genetic schedule generation and optimization.
+- Constraint configuration through the user interface.
 - Academic scheduling workflow.
+- Genetic optimization integration through the application and REST API layers.
 - Schedule results visualization.
 - Calendar and table result views.
-- Constraint violation and fitness breakdown.
-- Experimental evaluation of the genetic algorithm.
+- Constraint violation and fitness breakdown in the results interface.
+- Work-shift scheduling as a secondary validation scenario.
 
 Additional planning templates and advanced features may be added after the core MVP is stable.
 
@@ -81,6 +98,32 @@ Genetic Engine
 Schedule
 ```
 
+The Genetic Engine internally follows this generic optimization pipeline:
+
+```text
+PlanningProblem
+       │
+       ▼
+AssignmentCandidateGenerator
+       │
+       ▼
+ScheduleGenotypeCodec
+       │
+       ▼
+Jenetics Engine
+       │
+       ▼
+Schedule
+       │
+       ▼
+ConstraintEvaluator
+       │
+       ▼
+OptimizationResult
+```
+
+The Genetic Engine remains independent from planning templates. Academic and work-shift scenarios are converted into the same generic planning model before optimization.
+
 The domain layer does not depend on Spring, JPA or Jenetics. Framework-specific and persistence concerns are kept outside the core domain.
 
 ## Technologies
@@ -102,7 +145,7 @@ The domain layer does not depend on Spring, JPA or Jenetics. Framework-specific 
 
 ### Frontend
 
-Planned frontend stack:
+Selected frontend stack:
 
 - React
 - TypeScript
@@ -179,7 +222,7 @@ The credentials above are intended for the local development environment only.
 
 ### Backend
 
-Start the backend from the project root:
+Start the backend from the project root.
 
 #### Windows
 
@@ -236,6 +279,22 @@ GET http://localhost:8080/actuator/health
 ./gradlew :backend:test
 ```
 
+### Genetic Engine experiment
+
+The initial Genetic Engine experiment compares the FAST, BALANCED and EXHAUSTIVE presets using a controlled planning dataset and a reproducible random seed.
+
+The experiment source is located under:
+
+```text
+backend/src/test/kotlin/com/geneticplanner/experiment/
+```
+
+Experimental results and methodology are documented in:
+
+```text
+docs/experiments/genetic-engine-experiment.md
+```
+
 ### Build the backend
 
 #### Windows
@@ -267,7 +326,7 @@ docker compose down -v
 ```text
 genetic-planner/
 ├── app/
-│   └── Jenetics proof of concept
+│   └── Initial Jenetics proof of concept
 │
 ├── backend/
 │   ├── build.gradle.kts
@@ -276,12 +335,24 @@ genetic-planner/
 │       │   ├── kotlin/
 │       │   │   └── com/geneticplanner/
 │       │   │       ├── GeneticPlannerApplication.kt
-│       │   │       └── api/
+│       │   │       ├── api/
+│       │   │       ├── domain/
+│       │   │       │   ├── candidate/
+│       │   │       │   ├── constraint/
+│       │   │       │   ├── evaluation/
+│       │   │       │   └── validation/
+│       │   │       └── genetic/
+│       │   │           ├── codec/
+│       │   │           └── config/
 │       │   └── resources/
 │       └── test/
+│           └── kotlin/
+│               └── com/geneticplanner/
+│                   ├── dataset/
+│                   └── experiment/
 │
 ├── frontend/
-│   └── Frontend application (planned)
+│   └── Frontend application
 │
 ├── datasets/
 │   └── Evaluation and example datasets
@@ -290,6 +361,7 @@ genetic-planner/
 │   ├── requirements/
 │   ├── architecture/
 │   ├── algorithm/
+│   ├── experiments/
 │   ├── ux/
 │   └── diagrams/
 │
@@ -302,7 +374,9 @@ genetic-planner/
 └── README.md
 ```
 
-The `app` module currently contains the Jenetics proof of concept used to validate the genetic algorithm technology and Java/Kotlin baseline. The production backend is implemented in the separate `backend` module.
+The `app` module contains the original Jenetics proof of concept used to validate the selected genetic algorithm technology and Java/Kotlin baseline.
+
+The production Genetic Engine is implemented in the `backend` module. The proof-of-concept module is retained as an historical technical validation artifact.
 
 ## Documentation
 
@@ -312,9 +386,13 @@ The documentation currently covers:
 
 - Project scope and requirements.
 - Generic planning domain model.
-- Constraint model and constraint catalogue.
-- Constraint evaluation and fitness strategy.
-- Genetic representation and algorithm configuration.
+- Planning problem validation.
+- Constraint model and implemented constraint catalogue.
+- Constraint evaluation and weighting.
+- Fitness strategy.
+- Chromosome representation and Jenetics-domain adaptation.
+- Genetic Algorithm implementation and configuration.
+- Genetic Engine experiments.
 - Planning template architecture.
 - Application architecture.
 - Frontend strategy.
@@ -328,7 +406,11 @@ The repository documentation is intended to serve both as development documentat
 
 Genetic Planner is currently under active development.
 
-The initial architecture and technical foundations have been defined and the backend development environment is operational. The next development phase focuses on implementing the generic planning domain, constraint evaluation and genetic optimization engine.
+The project foundation and Genetic Engine milestones are complete.
+
+The backend now includes the generic planning domain, planning problem validation, assignment candidate generation, hard and soft constraint evaluation, weighted fitness calculation, Jenetics genotype adaptation, genetic optimization, reproducible execution, automated tests, sample datasets and an initial experimental evaluation.
+
+The next development milestone focuses on the functional MVP: exposing the planning workflow through the application and REST API layers, implementing the frontend, supporting the Academic scheduling workflow, and visualizing generated schedules and their constraint evaluation.
 
 Development is organized using GitHub Issues and GitHub Projects, following a lightweight Kanban workflow.
 

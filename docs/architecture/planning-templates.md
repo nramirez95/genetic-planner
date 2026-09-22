@@ -2,45 +2,195 @@
 
 ## 1. Purpose
 
-This document defines the planning template architecture used by Genetic Planner.
+This document defines the planning template architecture of **Genetic Planner**.
 
-The purpose of a planning template is to simplify the configuration of a planning problem for a specific use case while preserving a completely generic internal planning model.
+Planning templates provide a domain-oriented configuration experience
+while preserving a completely generic internal planning model.
 
-The central architecture is:
+For example, users configuring an academic timetable should work with
+concepts such as:
 
 ```text
-Academic Template ───────┐
-                         ↓
-                  PlanningProblem
-                         ↓
-                  Genetic Engine
-                         ↑
-Work Shift Template ─────┘
+Teacher
+Student Group
+Class
+Classroom
+Teaching Period
 ```
 
-The Genetic Engine must only understand the generic `PlanningProblem`.
+while users configuring work shifts may work with:
 
-It must not contain logic related to:
+```text
+Employee
+Work Assignment
+Workplace
+Shift Period
+```
 
-* Teachers.
-* Subjects.
-* Students.
-* Employees.
-* Work shifts.
-* Academic scheduling.
-* Workforce scheduling.
+Both scenarios are translated into the same generic:
 
-The main design principle is:
+```text
+PlanningProblem
+```
 
-> **Templates provide domain-specific configuration and terminology, while the Genetic Engine operates only on generic planning concepts.**
+which is processed by the same Genetic Engine.
+
+The central architectural principle is:
+
+> **Templates provide domain-specific configuration and terminology,
+> while the Genetic Engine operates only on generic planning concepts.**
 
 ---
 
-# 2. PlanningTemplate Concept
+## 2. Current Status
 
-A `PlanningTemplate` defines how a specific planning scenario is configured and transformed into a generic `PlanningProblem`.
+The planning template architecture was designed during the foundation
+phase of Genetic Planner.
 
-Conceptually:
+At the completion of M2, the generic domain model and Genetic Engine
+required by templates are implemented.
+
+The complete application/template layer is part of:
+
+```text
+M3 — Functional MVP
+```
+
+Therefore, this document distinguishes between:
+
+* **Implemented core contracts** already available in the domain and
+  Genetic Engine.
+* **Planned template/application components** that define how M3 will
+  expose those contracts to users.
+
+The mandatory MVP scenario is:
+
+```text
+Academic Scheduling
+```
+
+The secondary genericity validation scenario is:
+
+```text
+Work Shift Scheduling
+```
+
+---
+
+## 3. Template Boundary
+
+Planning templates act as adapters between the user's mental model and
+the generic planning model.
+
+For Academic Scheduling:
+
+```text
+Teacher
+    ↓
+Resource
+
+Student Group
+    ↓
+Resource
+
+Class / Lesson
+    ↓
+Activity
+
+Classroom
+    ↓
+Location
+
+Teaching Period
+    ↓
+TimeSlot
+
+Scheduling Rule
+    ↓
+Constraint
+```
+
+For Work Shift Scheduling:
+
+```text
+Employee
+    ↓
+Resource
+
+Work Assignment
+    ↓
+Activity
+
+Workplace
+    ↓
+Location
+
+Shift Period
+    ↓
+TimeSlot
+
+Workforce Rule
+    ↓
+Constraint
+```
+
+Once this transformation has occurred, the domain-specific terminology
+is irrelevant to optimization.
+
+---
+
+## 4. Architecture
+
+The intended application flow is:
+
+```text
+                 Genetic Planner
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+          ▼                         ▼
+ Academic Template          Work Shift Template
+          │                         │
+          └────────────┬────────────┘
+                       │
+                       ▼
+                PlanningProblem
+                       │
+                       ▼
+                ProblemValidator
+                       │
+                       ▼
+                 Genetic Engine
+                       │
+                       ▼
+              OptimizationResult
+                       │
+                       ▼
+             Schedule Visualization
+```
+
+The important architectural boundary is:
+
+```text
+Template / Application Layer
+              │
+              ▼
+       PlanningProblem
+────────────────────────────────
+       Genetic Engine
+```
+
+The Genetic Engine receives exactly the same domain model regardless of
+which template created it.
+
+---
+
+## 5. PlanningTemplate Concept
+
+A planning template conceptually defines how a particular planning
+scenario is configured and transformed into a generic `PlanningProblem`.
+
+A possible application-layer abstraction is:
 
 ```kotlin
 interface PlanningTemplate<TConfig> {
@@ -61,608 +211,71 @@ interface PlanningTemplate<TConfig> {
 }
 ```
 
+> **Implementation status:** this interface describes the intended M3
+> template/application architecture. It is not part of the M2 Genetic
+> Engine implementation.
+
 A template is responsible for:
 
 * Providing domain-specific terminology.
-* Providing default configuration.
-* Defining default constraints.
+* Providing sensible default configuration.
+* Providing appropriate default constraints.
 * Collecting template-specific user input.
 * Transforming that input into generic domain objects.
-* Producing a valid `PlanningProblem`.
+* Producing a `PlanningProblem` suitable for validation.
 
 A template is not responsible for:
 
-* Evaluating fitness.
+* Candidate generation.
+* Genotype encoding.
+* Fitness evaluation.
 * Running Jenetics.
-* Applying mutation.
-* Applying crossover.
-* Selecting individuals.
-* Calculating genetic parameters.
+* Selection.
+* Crossover.
+* Mutation.
+* Elitism.
+* Genetic termination.
+
+Those responsibilities belong to the generic optimization architecture.
 
 ---
 
-# 3. Template Boundary
+## 6. Template Responsibilities
 
-The template layer acts as an adapter between:
+### 6.1 Terminology
 
-```text
-User mental model
-```
+Templates provide terminology appropriate to the selected planning
+scenario.
 
-and:
+Academic:
 
-```text
-Generic planning model
-```
+| Generic concept | UI concept |
+| --- | --- |
+| Resource | Teacher / Student Group |
+| Activity | Class |
+| Location | Classroom |
+| TimeSlot | Teaching Period |
 
-For example:
+Work Shift:
 
-```text
-Teacher
-    ↓
-Resource
+| Generic concept | UI concept |
+| --- | --- |
+| Resource | Employee |
+| Activity | Work Assignment |
+| Location | Workplace |
+| TimeSlot | Shift Period |
 
-Subject session
-    ↓
-Activity
-
-Classroom
-    ↓
-Location
-
-Teaching period
-    ↓
-TimeSlot
-```
-
-Similarly:
-
-```text
-Employee
-    ↓
-Resource
-
-Work assignment
-    ↓
-Activity
-
-Workplace
-    ↓
-Location
-
-Shift period
-    ↓
-TimeSlot
-```
-
-Therefore templates translate domain language into the generic model without changing the Genetic Engine.
-
----
-
-# 4. Generic Architecture
-
-The overall architecture is:
-
-```text
-                Genetic Planner
-                       │
-           ┌───────────┴───────────┐
-           │                       │
-           ▼                       ▼
-    Academic Template       Work Shift Template
-           │                       │
-           └───────────┬───────────┘
-                       │
-                       ▼
-                PlanningProblem
-                       │
-                       ▼
-                 ProblemValidator
-                       │
-                       ▼
-                 Genetic Engine
-                       │
-                       ▼
-                    Schedule
-```
-
-The Genetic Engine receives exactly the same structure regardless of the selected template.
-
----
-
-# 5. Responsibilities of PlanningTemplate
-
-A planning template is responsible for five main concerns.
-
-## 5.1 Terminology
-
-The template provides user-friendly domain terminology.
-
-For example:
-
-```text
-Generic term      Academic UI term
-
-Resource          Teacher / Student Group
-Activity          Class
-Location          Classroom
-TimeSlot          Teaching Period
-```
-
-while:
-
-```text
-Generic term      Work Shift UI term
-
-Resource          Employee
-Activity          Work Assignment
-Location          Workplace
-TimeSlot          Shift Period
-```
-
-Terminology affects the UI only.
+Terminology affects the application and UI only.
 
 It does not change the generic domain model.
 
 ---
 
-## 5.2 Default configuration
+### 6.2 Default Configuration
 
-A template provides a reasonable initial configuration.
+Templates may provide sensible starting values.
 
-Examples:
-
-```text
-Academic Template
-
-Resource types:
-- Teacher
-- Student Group
-
-Default activity type:
-- Class
-
-Default location type:
-- Classroom
-```
-
-or:
-
-```text
-Work Shift Template
-
-Resource types:
-- Employee
-
-Default activity type:
-- Work Assignment
-
-Default location type:
-- Workplace
-```
-
----
-
-## 5.3 Default constraints
-
-Each template can suggest constraints appropriate to its planning scenario.
-
-These constraints still implement the generic `Constraint` abstraction.
-
-For example:
-
-```text
-Academic Template
-
-HARD
-- No overlap
-- Availability
-- Required resource
-
-SOFT
-- Preferred time slot
-- Max consecutive
-```
-
-and:
-
-```text
-Work Shift Template
-
-HARD
-- No overlap
-- Availability
-- Required resource
-- Maximum assignments
-
-SOFT
-- Minimum assignments
-- Max consecutive
-- Preferred time slot
-```
-
----
-
-## 5.4 Input transformation
-
-The template transforms domain-oriented configuration into:
-
-```text
-PlanningProblem
-```
-
-For example:
-
-```text
-AcademicTemplateConfig
-        ↓
-AcademicTemplate
-        ↓
-PlanningProblem
-```
-
-The transformation produces:
-
-* `ResourceType`
-* `Resource`
-* `Activity`
-* `ResourceRequirement`
-* `TimeSlot`
-* `Location`
-* `Constraint`
-
----
-
-## 5.5 UI guidance
-
-Templates may provide metadata used by the UI.
-
-For example:
-
-```text
-Teacher
-instead of
-Resource
-```
-
-or:
-
-```text
-Classroom
-instead of
-Location
-```
-
-This improves usability without creating template-specific Genetic Engine behavior.
-
----
-
-# 6. Template Metadata
-
-A template may expose descriptive metadata such as:
-
-```kotlin
-data class PlanningTemplateMetadata(
-    val id: String,
-    val name: String,
-    val description: String,
-    val resourceLabel: String,
-    val activityLabel: String,
-    val locationLabel: String,
-    val timeSlotLabel: String
-)
-```
-
-Example:
-
-```kotlin
-Academic Template
-
-resourceLabel = "Teacher / Group"
-activityLabel = "Class"
-locationLabel = "Classroom"
-timeSlotLabel = "Teaching Period"
-```
-
-Example:
-
-```kotlin
-Work Shift Template
-
-resourceLabel = "Employee"
-activityLabel = "Work Assignment"
-locationLabel = "Workplace"
-timeSlotLabel = "Shift"
-```
-
-These labels belong to the application/UI layer.
-
-The domain model continues using generic names.
-
----
-
-# 7. Academic Template
-
-The Academic Template represents academic timetable generation.
-
-Its goal is to allow users to configure an academic problem using familiar terminology while internally creating a standard `PlanningProblem`.
-
----
-
-# 8. Academic Mapping
-
-The conceptual mapping is:
-
-| Academic concept                   | Generic model       |
-| ---------------------------------- | ------------------- |
-| Teacher                            | Resource            |
-| Student Group                      | Resource            |
-| Class / Lesson                     | Activity            |
-| Classroom                          | Location            |
-| Teaching Period                    | TimeSlot            |
-| Teacher required for a class       | ResourceRequirement |
-| Student group required for a class | ResourceRequirement |
-| Scheduling rule                    | Constraint          |
-
-Example:
-
-```text
-Mathematics Class
-
-Teacher:
-Ana
-
-Student Group:
-1A
-
-Classroom:
-Room 101
-
-Period:
-Monday 09:00–10:00
-```
-
-becomes:
-
-```text
-Activity
-    ↓
-ResourceRequirement
-    ├── Teacher
-    └── Student Group
-
-TimeSlot
-    ↓
-Monday 09:00–10:00
-
-Location
-    ↓
-Room 101
-```
-
----
-
-# 9. Academic Template Configuration
-
-Conceptually:
-
-```kotlin
-data class AcademicTemplateConfig(
-    val name: String,
-    val planningHorizon: PlanningHorizon,
-    val teachers: List<AcademicResourceConfig>,
-    val studentGroups: List<AcademicResourceConfig>,
-    val classes: List<AcademicActivityConfig>,
-    val teachingPeriods: List<TimeSlot>,
-    val classrooms: List<Location>,
-    val constraints: List<Constraint>
-)
-```
-
-These configuration classes belong to the template/application layer.
-
-They do not belong to the generic domain.
-
----
-
-# 10. Academic Resource Types
-
-The default Academic Template defines:
-
-```text
-Teacher
-Student Group
-```
-
-as configurable `ResourceType` objects.
-
-Conceptually:
-
-```text
-ResourceType
-
-teacher
-student-group
-```
-
-A teacher becomes:
-
-```text
-Resource
-
-id = teacher-ana
-name = Ana
-typeId = teacher
-```
-
-A student group becomes:
-
-```text
-Resource
-
-id = group-1a
-name = Group 1A
-typeId = student-group
-```
-
----
-
-# 11. Academic Activities
-
-Each class or lesson becomes one atomic `Activity`.
-
-Example:
-
-```text
-Mathematics — Group 1A — Session 1
-```
-
-becomes:
-
-```text
-Activity
-```
-
-with requirements:
-
-```text
-Teacher × 1
-Student Group × 1
-```
-
-For example:
-
-```text
-ResourceRequirement
-
-Teacher
-quantity = 1
-candidateResourceIds =
-[Ana, Carlos]
-```
-
-and:
-
-```text
-ResourceRequirement
-
-Student Group
-quantity = 1
-candidateResourceIds =
-[Group 1A]
-```
-
-Repeated lessons are represented as separate atomic activities.
-
-Example:
-
-```text
-Mathematics 1A — Session 1
-Mathematics 1A — Session 2
-Mathematics 1A — Session 3
-```
-
----
-
-# 12. Academic Time Slots
-
-Teaching periods become generic `TimeSlot` objects.
-
-Example:
-
-```text
-Monday 09:00–10:00
-Monday 10:00–11:00
-Monday 11:00–12:00
-```
-
-Each period has a concrete:
-
-```text
-start
-end
-```
-
-date and time.
-
-The Genetic Engine does not know that these represent school periods.
-
----
-
-# 13. Academic Locations
-
-Classrooms become generic `Location` objects.
-
-Example:
-
-```text
-Room 101
-Computer Lab
-Physics Lab
-```
-
-Optional attributes may describe:
-
-```text
-capacity
-type
-equipment
-```
-
-when necessary.
-
----
-
-# 14. Academic Default Constraints
-
-The Academic Template proposes the following initial constraints.
-
-## HARD
-
-```text
-NoOverlapConstraint
-AvailabilityConstraint
-RequiredResourceConstraint
-```
-
-These represent fundamental timetable requirements.
-
-### NoOverlapConstraint
-
-Prevents the same teacher or student group from being assigned to overlapping activities.
-
-### AvailabilityConstraint
-
-Prevents teachers or other resources from being assigned outside their availability.
-
-### RequiredResourceConstraint
-
-Ensures that every class receives the required resources.
-
----
-
-## SOFT
-
-```text
-PreferredTimeSlotConstraint
-MaxConsecutiveConstraint
-```
-
-These improve timetable quality.
-
-### PreferredTimeSlotConstraint
-
-Allows teachers or activities to express preferred teaching periods.
-
-### MaxConsecutiveConstraint
-
-Reduces excessive consecutive assignments.
-
----
-
-# 15. Academic Default Configuration
-
-The initial Academic Template may provide:
+Academic example:
 
 ```text
 Resource types:
@@ -679,53 +292,492 @@ TimeSlot label:
 - Teaching Period
 ```
 
-Default constraints:
+Work Shift example:
+
+```text
+Resource type:
+- Employee
+
+Activity label:
+- Work Assignment
+
+Location label:
+- Workplace
+
+TimeSlot label:
+- Shift Period
+```
+
+Defaults are starting configurations rather than fixed planning rules.
+
+---
+
+### 6.3 Default Constraints
+
+Templates select appropriate constraints from the generic implemented
+constraint catalogue.
+
+They do not implement their own constraint engines.
+
+The currently implemented generic catalogue is:
 
 ```text
 HARD
-- No overlap
-- Availability
-- Required resource
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+├── RequiredResourceConstraint
+└── LocationCapacityConstraint
 
 SOFT
-- Preferred time slot
-- Maximum consecutive
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint
 ```
 
-Optimization preset:
+Templates may select and configure an appropriate subset of these
+constraints.
+
+---
+
+### 6.4 Input Transformation
+
+Template-specific configuration is transformed into:
+
+```text
+PlanningProblem
+├── ResourceType
+├── Resource
+├── Activity
+│     └── ResourceRequirement
+├── TimeSlot
+├── Location
+└── Constraint
+```
+
+The resulting object contains no template-specific domain classes.
+
+---
+
+### 6.5 UI Guidance
+
+Templates may expose metadata that allows the UI to display:
+
+```text
+Teacher
+```
+
+instead of:
+
+```text
+Resource
+```
+
+or:
+
+```text
+Classroom
+```
+
+instead of:
+
+```text
+Location
+```
+
+This improves usability without introducing template-specific behaviour
+into the Genetic Engine.
+
+---
+
+## 7. Template Metadata
+
+The application layer may expose template metadata such as:
+
+```kotlin
+data class PlanningTemplateMetadata(
+    val id: String,
+    val name: String,
+    val description: String,
+    val resourceLabel: String,
+    val activityLabel: String,
+    val locationLabel: String,
+    val timeSlotLabel: String
+)
+```
+
+> **Implementation status:** the exact metadata model belongs to M3 and
+> may be refined during frontend/application implementation.
+
+For example:
+
+```text
+Academic
+
+resourceLabel = "Teacher / Group"
+activityLabel = "Class"
+locationLabel = "Classroom"
+timeSlotLabel = "Teaching Period"
+```
+
+and:
+
+```text
+Work Shift
+
+resourceLabel = "Employee"
+activityLabel = "Work Assignment"
+locationLabel = "Workplace"
+timeSlotLabel = "Shift"
+```
+
+These labels belong to the application/UI layer.
+
+---
+
+# 8. Academic Scheduling Template
+
+## 8.1 Role in the MVP
+
+Academic Scheduling is the **primary and mandatory end-to-end template**
+for the MVP.
+
+Its purpose is to allow users to configure an academic timetable using
+familiar concepts while internally producing the generic
+`PlanningProblem` already supported by the Genetic Engine.
+
+The expected flow is:
+
+```text
+Academic Configuration
+        ↓
+Academic Template
+        ↓
+PlanningProblem
+        ↓
+ProblemValidator
+        ↓
+Genetic Engine
+        ↓
+OptimizationResult
+        ↓
+Academic Timetable
+```
+
+---
+
+## 8.2 Academic Mapping
+
+| Academic concept | Generic model |
+| --- | --- |
+| Teacher | Resource |
+| Student Group | Resource |
+| Class / Lesson | Activity |
+| Classroom | Location |
+| Teaching Period | TimeSlot |
+| Teacher requirement | ResourceRequirement |
+| Student group requirement | ResourceRequirement |
+| Scheduling rule | Constraint |
+
+For example:
+
+```text
+Mathematics — Group 1A — Session 1
+```
+
+becomes one:
+
+```text
+Activity
+```
+
+with ResourceRequirements such as:
+
+```text
+Teacher
+quantity = 1
+```
+
+and:
+
+```text
+Student Group
+quantity = 1
+```
+
+---
+
+## 8.3 Academic Configuration
+
+A possible M3 configuration model is:
+
+```kotlin
+data class AcademicTemplateConfig(
+    val name: String,
+    val planningHorizon: PlanningHorizon,
+    val teachers: List<AcademicResourceConfig>,
+    val studentGroups: List<AcademicResourceConfig>,
+    val classes: List<AcademicActivityConfig>,
+    val teachingPeriods: List<TimeSlot>,
+    val classrooms: List<Location>,
+    val constraints: List<Constraint>
+)
+```
+
+This is an application/template representation, not part of the generic
+domain.
+
+The exact DTO/configuration structure may be refined during M3.
+
+---
+
+## 8.4 Academic Resource Types
+
+The Academic Template can define:
+
+```text
+teacher
+student-group
+```
+
+as generic `ResourceType` values.
+
+For example:
+
+```text
+ResourceType
+id = teacher
+name = Teacher
+```
+
+and:
+
+```text
+Resource
+id = teacher-ana
+name = Ana
+typeId = teacher
+```
+
+Similarly:
+
+```text
+ResourceType
+id = student-group
+name = Student Group
+```
+
+and:
+
+```text
+Resource
+id = group-1a
+name = Group 1A
+typeId = student-group
+```
+
+The Genetic Engine only sees generic Resources.
+
+---
+
+## 8.5 Academic Activities
+
+Each schedulable lesson becomes one atomic Activity.
+
+For example:
+
+```text
+Mathematics 1A — Session 1
+```
+
+may contain:
+
+```text
+ResourceRequirement
+
+id = teacher-requirement
+resourceTypeId = teacher
+quantity = 1
+candidateResourceIds = [teacher-ana, teacher-carlos]
+```
+
+and:
+
+```text
+ResourceRequirement
+
+id = group-requirement
+resourceTypeId = student-group
+quantity = 1
+candidateResourceIds = [group-1a]
+```
+
+Repeated lessons are expanded into separate Activities:
+
+```text
+math-1a-session-1
+math-1a-session-2
+math-1a-session-3
+```
+
+This preserves:
+
+> **One Activity = one genetic scheduling decision.**
+
+---
+
+## 8.6 Academic TimeSlots
+
+Teaching periods become generic TimeSlots.
+
+For example:
+
+```text
+Monday 09:00–10:00
+Monday 10:00–11:00
+Monday 11:00–12:00
+```
+
+Each period contains concrete:
+
+```text
+start
+end
+```
+
+values represented through `LocalDateTime`.
+
+The Genetic Engine does not know that these TimeSlots represent teaching
+periods.
+
+---
+
+## 8.7 Academic Locations
+
+Classrooms become generic Locations.
+
+For example:
+
+```text
+Room 101
+Computer Lab
+Physics Lab
+```
+
+Intrinsic Location information may include:
+
+```text
+type
+capacity
+attributes
+```
+
+For example:
+
+```text
+Room 101
+capacity = 30
+```
+
+An Activity may independently define:
+
+```text
+requiredLocationCapacity = 25
+```
+
+and `LocationCapacityConstraint` evaluates whether the selected
+classroom provides sufficient capacity.
+
+---
+
+## 8.8 Academic Default Constraints
+
+A reasonable Academic Template configuration uses:
+
+```text
+HARD
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+├── RequiredResourceConstraint
+└── LocationCapacityConstraint   (when capacity is relevant)
+
+SOFT
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint   (when workload balancing is relevant)
+```
+
+`NoOverlapConstraint` prevents teachers and student groups from
+participating in overlapping classes.
+
+`AvailabilityConstraint` prevents Resources from being assigned outside
+their configured availability.
+
+`RequiredResourceConstraint` verifies that each class receives the
+Resources described by its ResourceRequirements.
+
+`LocationCapacityConstraint` verifies that a selected classroom provides
+the capacity required by the Activity.
+
+`PreferredTimeSlotConstraint` allows Activities to prefer particular
+teaching periods.
+
+`MaxConsecutiveConstraint` discourages excessive consecutive assignments
+for Resources.
+
+`BalancedWorkloadConstraint` can encourage activities to be distributed
+more evenly between configured Resources.
+
+The exact defaults and weights will be finalized when the Academic
+Template is implemented in M3.
+
+---
+
+## 8.9 Academic Optimization Configuration
+
+The default optimization preset is intended to be:
 
 ```text
 BALANCED
 ```
 
-The user can modify applicable parameters before generation.
+The underlying Genetic Engine already supports:
+
+```text
+FAST
+BALANCED
+EXHAUSTIVE
+```
+
+as well as explicit `GeneticAlgorithmConfig`.
+
+Template selection does not change Genetic Engine behaviour.
 
 ---
 
-# 16. Academic Transformation Example
+## 8.10 Academic Transformation Example
 
-User configuration:
+User-facing configuration:
 
 ```text
-Teacher:
-Ana
+Teachers:
+- Ana
 
-Student Group:
-1A
+Student Groups:
+- 1A
 
 Class:
-Mathematics
+- Mathematics
 
 Teaching periods:
-Monday 09:00
-Monday 10:00
+- Monday 09:00–10:00
+- Monday 10:00–11:00
 
 Classrooms:
-Room 101
-Room 102
+- Room 101
+- Room 102
 ```
 
-Template output:
+is transformed conceptually into:
 
 ```text
 PlanningProblem
@@ -739,13 +791,13 @@ Resources
 └── Group 1A
 
 Activities
-└── Mathematics 1A
+└── Mathematics 1A — Session 1
       ├── Teacher × 1
       └── Student Group × 1
 
 TimeSlots
-├── Monday 09:00
-└── Monday 10:00
+├── Monday 09:00–10:00
+└── Monday 10:00–11:00
 
 Locations
 ├── Room 101
@@ -754,72 +806,71 @@ Locations
 Constraints
 ├── NoOverlap
 ├── Availability
-└── RequiredResource
+├── RequiredResource
+├── LocationCapacity
+├── PreferredTimeSlot
+└── MaxConsecutive
 ```
 
-The Genetic Engine receives only this generic object.
+The Genetic Engine receives only the resulting generic
+`PlanningProblem`.
 
 ---
 
-# 17. Work Shift Template
+# 9. Work Shift Scheduling Template
 
-The Work Shift Template represents workforce scheduling.
+## 9.1 Role in the MVP
 
-It allows users to configure employees, working periods and assignments using workforce terminology while producing the same generic `PlanningProblem`.
+Work Shift Scheduling is the **secondary validation scenario**.
+
+Its purpose is to demonstrate that a substantially different planning
+domain can use exactly the same generic model and Genetic Engine.
+
+Its implementation is a Should Have capability.
+
+If the complete UI workflow cannot be completed within the available
+development time, its mapping may still be validated through an
+automated dataset and documented scenario.
 
 ---
 
-# 18. Work Shift Mapping
+## 9.2 Work Shift Mapping
 
-The conceptual mapping is:
-
-| Work Shift concept   | Generic model       |
-| -------------------- | ------------------- |
-| Employee             | Resource            |
-| Work Assignment      | Activity            |
-| Workplace            | Location            |
-| Shift Period         | TimeSlot            |
+| Work Shift concept | Generic model |
+| --- | --- |
+| Employee | Resource |
+| Work Assignment | Activity |
+| Workplace | Location |
+| Shift Period | TimeSlot |
 | Employee requirement | ResourceRequirement |
-| Workforce rule       | Constraint          |
+| Workforce rule | Constraint |
 
-Example:
+For example:
 
 ```text
-Reception Shift
-
-Employee:
-Ana
-
-Workplace:
-Main Office
-
-Shift:
-Monday 08:00–16:00
+Reception — Monday Morning
 ```
 
 becomes:
 
 ```text
 Activity
-    ↓
-ResourceRequirement
-    ↓
-Employee × 1
-
-TimeSlot
-    ↓
-Monday 08:00–16:00
-
-Location
-    ↓
-Main Office
+    │
+    ├── ResourceRequirement
+    │       └── Employee × 1
+    │
+    ├── TimeSlot
+    │       └── Monday 08:00–16:00
+    │
+    └── Location
+            └── Main Office
 ```
 
 ---
 
-# 19. Work Shift Template Configuration
+## 9.3 Work Shift Configuration
 
-Conceptually:
+A possible M3 configuration model is:
 
 ```kotlin
 data class WorkShiftTemplateConfig(
@@ -833,88 +884,95 @@ data class WorkShiftTemplateConfig(
 )
 ```
 
-As with the Academic Template, these classes remain outside the generic domain.
+As with the Academic Template, this is an application/template model and
+not part of the generic domain.
+
+The exact implementation may be refined during M3.
 
 ---
 
-# 20. Work Shift Resource Types
+## 9.4 Work Shift Resource Types
 
-The default template defines:
+The Work Shift Template can define:
 
 ```text
-Employee
+employee
 ```
 
-as its main `ResourceType`.
+as a generic ResourceType.
 
-Example:
+For example:
 
 ```text
 ResourceType
-employee
+id = employee
+name = Employee
 ```
 
 and:
 
 ```text
 Resource
-
 id = employee-ana
 name = Ana
 typeId = employee
 ```
 
-Future versions could define other configurable resource types without modifying the Genetic Engine.
+Additional ResourceTypes may be introduced without modifying the Genetic
+Engine.
 
 ---
 
-# 21. Work Shift Activities
+## 9.5 Work Shift Activities
 
-A required work assignment becomes an `Activity`.
+Each required work assignment becomes an atomic Activity.
 
-Example:
+For example:
 
 ```text
 Reception — Monday Morning
 ```
 
-with:
+may contain:
 
 ```text
 ResourceRequirement
 
-Employee
+id = employee-requirement
+resourceTypeId = employee
 quantity = 1
 ```
 
-An assignment requiring multiple employees may use:
+An Activity requiring two employees may instead use:
 
 ```text
 quantity = 2
 ```
 
-For example:
-
-```text
-Night support
-
-Employee requirement
-quantity = 2
-```
-
-Candidate employees can be restricted through:
+Candidate employees may be restricted through:
 
 ```text
 candidateResourceIds
 ```
 
+For example:
+
+```text
+candidateResourceIds =
+[
+    employee-ana,
+    employee-laura,
+    employee-pedro
+]
+```
+
 ---
 
-# 22. Work Shift Time Slots
+## 9.6 Work Shift TimeSlots
 
-Work shifts become generic `TimeSlot` objects.
+Work periods become generic TimeSlots.
 
-Examples:
+For example:
 
 ```text
 Monday 08:00–16:00
@@ -922,143 +980,113 @@ Monday 16:00–00:00
 Tuesday 08:00–16:00
 ```
 
-The Genetic Engine handles them exactly like Academic teaching periods.
+The Genetic Engine handles them in exactly the same way as academic
+teaching periods.
 
 ---
 
-# 23. Work Shift Locations
+## 9.7 Work Shift Locations
 
-Workplaces become generic `Location` objects.
+Workplaces become generic Locations.
 
-Examples:
+Examples include:
 
 ```text
 Main Office
 Warehouse
-Reception Desk
+Reception
 Branch A
 ```
 
 Locations remain optional.
 
-A planning problem with no relevant physical location may omit them.
+A planning problem that does not require a physical or logical location
+may omit them.
 
 ---
 
-# 24. Work Shift Default Constraints
+## 9.8 Work Shift Default Constraints
 
-The Work Shift Template proposes:
-
-## HARD
-
-```text
-NoOverlapConstraint
-AvailabilityConstraint
-RequiredResourceConstraint
-MaximumAssignmentsConstraint
-```
-
-### NoOverlapConstraint
-
-Prevents an employee from receiving overlapping work assignments.
-
-### AvailabilityConstraint
-
-Ensures that employees are only assigned when available.
-
-### RequiredResourceConstraint
-
-Ensures every work assignment receives the required employees.
-
-### MaximumAssignmentsConstraint
-
-Limits the number of assignments given to a resource when configured.
-
----
-
-## SOFT
-
-```text
-MinimumAssignmentsConstraint
-MaxConsecutiveConstraint
-PreferredTimeSlotConstraint
-```
-
-### MinimumAssignmentsConstraint
-
-Supports workload distribution.
-
-### MaxConsecutiveConstraint
-
-Reduces excessive consecutive assignments.
-
-### PreferredTimeSlotConstraint
-
-Supports employee scheduling preferences.
-
----
-
-# 25. Work Shift Default Configuration
-
-The initial Work Shift Template provides:
-
-```text
-Resource type:
-- Employee
-
-Activity label:
-- Work Assignment
-
-Location label:
-- Workplace
-
-TimeSlot label:
-- Shift
-```
-
-Default constraints:
+A reasonable Work Shift Template configuration uses constraints from the
+same generic catalogue:
 
 ```text
 HARD
-- No overlap
-- Availability
-- Required resource
-- Maximum assignments
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+└── RequiredResourceConstraint
 
 SOFT
-- Minimum assignments
-- Maximum consecutive
-- Preferred time slot
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint
 ```
 
-Optimization preset:
+`LocationCapacityConstraint` may also be used when the scenario includes
+capacity requirements.
+
+`BalancedWorkloadConstraint` provides the current generic mechanism for
+encouraging a more even distribution of assignments between employees.
+
+The previously considered:
+
+```text
+MaximumAssignmentsConstraint
+MinimumAssignmentsConstraint
+```
+
+are not part of the implemented M2 constraint catalogue.
+
+If future Work Shift requirements require explicit upper or lower
+assignment limits, additional generic constraints can be introduced
+without modifying the Genetic Engine.
+
+---
+
+## 9.9 Work Shift Optimization Configuration
+
+The intended default optimization preset is:
 
 ```text
 BALANCED
 ```
 
+The Work Shift Template uses the same:
+
+```text
+GeneticAlgorithmConfig
+```
+
+and the same:
+
+```text
+GeneticEngine
+```
+
+as Academic Scheduling.
+
 ---
 
-# 26. Work Shift Transformation Example
+## 9.10 Work Shift Transformation Example
 
 Input:
 
 ```text
 Employees:
-Ana
-Carlos
+- Ana
+- Carlos
 
-Assignment:
-Reception Morning
+Work Assignment:
+- Reception Morning
 
 Shift:
-Monday 08:00–16:00
+- Monday 08:00–16:00
 
 Workplace:
-Main Office
+- Main Office
 ```
 
-Template produces:
+becomes:
 
 ```text
 PlanningProblem
@@ -1084,29 +1112,34 @@ Constraints
 ├── NoOverlap
 ├── Availability
 ├── RequiredResource
-└── MaximumAssignments
+├── PreferredTimeSlot
+├── MaxConsecutive
+└── BalancedWorkload
 ```
 
-Again:
-
-```text
-Genetic Engine
-```
-
-does not know this originated from a Work Shift Template.
+Again, the Genetic Engine does not know that the PlanningProblem
+originated from a Work Shift Template.
 
 ---
 
-# 27. Common Template Structure
+# 10. Common Template Structure
 
-Both templates follow the same architecture:
+Both templates follow the same architectural pattern:
 
 ```text
 Template-specific configuration
-            ↓
-PlanningTemplate
-            ↓
-Generic PlanningProblem
+            │
+            ▼
+      Planning Template
+            │
+            ▼
+      PlanningProblem
+            │
+            ▼
+      ProblemValidator
+            │
+            ▼
+       Genetic Engine
 ```
 
 Academic:
@@ -1129,15 +1162,47 @@ WorkShiftTemplate
 PlanningProblem
 ```
 
-The output type is identical.
+The output contract is always the same.
 
 ---
 
-# 28. Template Factory
+# 11. Template Selection
 
-The application layer may expose a registry or factory.
+The intended user flow is:
 
-Conceptually:
+```text
+New Planning
+     ↓
+Choose Template
+     ↓
+┌────────────────┐
+│ Academic       │
+│ Work Shift     │
+└────────────────┘
+     ↓
+Template-specific configuration
+     ↓
+PlanningProblem
+     ↓
+ProblemValidator
+     ↓
+Genetic Engine
+     ↓
+OptimizationResult
+```
+
+Academic Scheduling is the mandatory MVP path.
+
+Work Shift Scheduling is the secondary genericity validation path.
+
+---
+
+# 12. Template Registry
+
+The application layer may provide a registry or equivalent mechanism for
+resolving templates.
+
+For example:
 
 ```kotlin
 enum class PlanningTemplateType {
@@ -1146,7 +1211,7 @@ enum class PlanningTemplateType {
 }
 ```
 
-and:
+and conceptually:
 
 ```kotlin
 interface PlanningTemplateRegistry {
@@ -1157,135 +1222,154 @@ interface PlanningTemplateRegistry {
 }
 ```
 
-The UI selects a template.
+> **Implementation status:** the exact registry design is intentionally
+> left to M3 and may change if a simpler application-layer approach is
+> more appropriate.
 
-The application resolves the corresponding implementation.
+The important architectural requirement is not the registry itself.
 
----
-
-# 29. Template Selection Flow
-
-The user flow becomes:
-
-```text
-New Planning
-     ↓
-Choose Template
-     ↓
-┌───────────────┐
-│ Academic      │
-│ Work Shift    │
-└───────────────┘
-     ↓
-Template-specific configuration
-     ↓
-PlanningProblem
-     ↓
-Validation
-     ↓
-Genetic Engine
-```
-
-Templates therefore improve usability without affecting the optimization architecture.
+It is that template selection occurs **before** creation of the generic
+`PlanningProblem`.
 
 ---
 
-# 30. Default Configuration Strategy
+# 13. Default Configuration Strategy
 
-Defaults should simplify initial configuration without preventing customization.
+Templates should simplify configuration without creating fixed planning
+models.
 
-Each template may provide:
+A template may provide:
 
 ```text
-Default resource types
+Default ResourceTypes
 Default terminology
-Default constraint catalogue
+Default constraints
 Default constraint weights
 Default optimization preset
 ```
 
-but the resulting `PlanningProblem` remains configurable.
-
-Example:
+For example:
 
 ```text
 Academic Template
         ↓
-Default NoOverlapConstraint
+NoOverlapConstraint enabled by default
         ↓
-User may keep/configure it
+User/application may configure its weight
 ```
 
-Templates are therefore:
+The resulting PlanningProblem remains generic and configurable.
+
+Therefore templates are:
 
 ```text
 starting configurations
 ```
 
-not:
+rather than:
 
 ```text
-fixed planning models
+separate scheduling engines
 ```
 
 ---
 
-# 31. Constraint Defaults
+# 14. Constraint Defaults
 
-The initial constraint configuration is:
+Only constraints from the implemented generic catalogue should be
+selected by current templates.
 
-| Constraint                   | Academic | Work Shift | Type |
-| ---------------------------- | -------- | ---------- | ---- |
-| NoOverlapConstraint          | Default  | Default    | HARD |
-| AvailabilityConstraint       | Default  | Default    | HARD |
-| RequiredResourceConstraint   | Default  | Default    | HARD |
-| MaximumAssignmentsConstraint | Optional | Default    | HARD |
-| MinimumAssignmentsConstraint | Optional | Default    | SOFT |
-| MaxConsecutiveConstraint     | Default  | Default    | SOFT |
-| PreferredTimeSlotConstraint  | Default  | Default    | SOFT |
-| CapacityConstraint           | Optional | Optional   | HARD |
-| DifferentDayConstraint       | Optional | Optional   | SOFT |
+A reasonable initial template mapping is:
 
-Only constraints from the generic catalogue are used.
+| Constraint | Academic | Work Shift | Type |
+| --- | --- | --- | --- |
+| `NoOverlapConstraint` | Default | Default | HARD |
+| `AvailabilityConstraint` | Default | Default | HARD |
+| `RequiredResourceConstraint` | Default | Default | HARD |
+| `LocationCapacityConstraint` | When applicable | When applicable | HARD |
+| `PreferredTimeSlotConstraint` | Default | Default | SOFT |
+| `MaxConsecutiveConstraint` | Default | Default | SOFT |
+| `BalancedWorkloadConstraint` | When applicable | Default | SOFT |
 
-The templates do not implement separate academic or workforce constraint engines.
+The exact template defaults may be refined during M3 according to the
+final UI workflow and validation datasets.
 
----
-
-# 32. Default Weights
-
-Initial default weights follow the fitness design.
-
-For example:
-
-```text
-HARD
-
-NoOverlap                1000
-Availability             1000
-RequiredResource         1000
-MaximumAssignments       1000
-```
-
-and:
-
-```text
-SOFT
-
-PreferredTimeSlot          10
-MaxConsecutive               5
-MinimumAssignments          10
-```
-
-These values remain configurable and experimentally adjustable.
+Templates never implement separate academic or workforce versions of
+these constraints.
 
 ---
 
-# 33. Genetic Engine Independence
+# 15. Constraint Weights
 
-The Genetic Engine must depend only on generic abstractions.
+Constraint weights remain configurable.
 
-Allowed dependencies include:
+The evaluation model applies:
+
+```text
+weightedPenalty =
+rawPenalty × weight
+```
+
+to both HARD and SOFT constraints.
+
+There is no hidden global HARD multiplier.
+
+Templates may provide default weights, but those values are
+configuration decisions rather than part of the generic constraint
+semantics.
+
+Therefore this architecture does not prescribe values such as:
+
+```text
+all HARD constraints = 1000
+```
+
+Different template defaults may be evaluated experimentally without
+modifying the Genetic Engine.
+
+---
+
+# 16. Genetic Algorithm Configuration
+
+Templates may select a default Genetic Algorithm preset.
+
+The implemented presets are:
+
+```text
+FAST
+BALANCED
+EXHAUSTIVE
+```
+
+The intended default for the initial templates is:
+
+```text
+BALANCED
+```
+
+The template does not implement or modify the Genetic Algorithm.
+
+It merely selects configuration passed to the same Genetic Engine.
+
+Conceptually:
+
+```text
+Template
+    │
+    └── default preset = BALANCED
+                │
+                ▼
+       GeneticAlgorithmConfig
+                │
+                ▼
+          Genetic Engine
+```
+
+---
+
+# 17. Genetic Engine Independence
+
+The Genetic Engine may depend on generic concepts such as:
 
 ```text
 PlanningProblem
@@ -1299,7 +1383,7 @@ Schedule
 Assignment
 ```
 
-The Genetic Engine must not depend on:
+It must not depend on:
 
 ```text
 AcademicTemplate
@@ -1316,96 +1400,74 @@ WorkShift
 Workplace
 ```
 
-Conceptually:
-
-```text
-Template
-    ↓
-PlanningProblem
-    ↓
-──────────── architecture boundary ────────────
-    ↓
-Genetic Engine
-```
-
-Once the `PlanningProblem` has been generated, the template is irrelevant to optimization.
-
----
-
-# 34. Forbidden Genetic Engine Logic
-
-The Genetic Engine must never contain code such as:
-
-```kotlin
-if (templateType == "ACADEMIC") {
-    ...
-}
-```
-
-or:
-
-```kotlin
-when (templateType) {
-    "ACADEMIC" -> ...
-    "WORK_SHIFT" -> ...
-}
-```
-
-or:
-
-```text
-if Resource is Teacher
-```
-
-or:
-
-```text
-if Activity is WorkShift
-```
-
-All planning semantics must already be represented through generic:
-
-```text
-Resources
-Activities
-Candidate domains
-Constraints
-```
-
----
-
-# 35. Template Type in PlanningProblem
-
-`PlanningProblem` may retain:
-
-```kotlin
-val templateType: String?
-```
-
-as metadata.
-
-Its purpose may include:
-
-* UI display.
-* Persistence.
-* Reopening an existing planning configuration.
-* Selecting appropriate terminology.
-
-However:
-
-> The Genetic Engine must never use `templateType` to change optimization behavior.
-
-For the Genetic Engine:
+For optimization:
 
 ```text
 templateType = ignored
 ```
 
+The engine must never contain logic such as:
+
+```kotlin
+if (problem.templateType == "ACADEMIC") {
+    // ...
+}
+```
+
+or:
+
+```kotlin
+when (problem.templateType) {
+    "ACADEMIC" -> ...
+    "WORK_SHIFT" -> ...
+}
+```
+
+All scheduling semantics must already be represented through generic:
+
+```text
+Resources
+Activities
+ResourceRequirements
+TimeSlots
+Locations
+Constraints
+```
+
 ---
 
-# 36. Adding Future Templates
+# 18. templateType
 
-The architecture must support adding another template without changing the Genetic Engine.
+`PlanningProblem` contains:
+
+```kotlin
+val templateType: String?
+```
+
+This value is metadata.
+
+It may be useful for:
+
+* UI display.
+* Persistence.
+* Reopening a configuration.
+* Selecting template-specific terminology.
+
+It must not influence:
+
+* Candidate generation.
+* Genotype encoding.
+* Fitness evaluation.
+* Selection.
+* Crossover.
+* Mutation.
+* Genetic evolution.
+
+---
+
+# 19. Adding Future Templates
+
+A new template should require no Genetic Engine modification.
 
 For example:
 
@@ -1417,43 +1479,48 @@ could map:
 
 ```text
 Examiner
-→ Resource
+    ↓
+Resource
 
 Exam
-→ Activity
+    ↓
+Activity
 
 Exam Room
-→ Location
+    ↓
+Location
 
 Exam Period
-→ TimeSlot
+    ↓
+TimeSlot
 ```
 
-and still produce:
+and produce:
 
 ```text
 PlanningProblem
 ```
 
-Therefore:
+The existing Genetic Engine can then optimize the problem without
+knowing that it represents examinations.
+
+Conceptually:
 
 ```text
 New Template
      ↓
-Implement PlanningTemplate
+Domain-specific configuration
      ↓
-Produce PlanningProblem
+PlanningProblem
      ↓
 Existing Genetic Engine
 ```
 
-No Genetic Engine modification should be required.
-
 ---
 
-# 37. Custom Template
+# 20. Custom Template
 
-A fully custom template is considered a future capability.
+A fully configurable generic template is a future capability.
 
 Conceptually:
 
@@ -1461,9 +1528,10 @@ Conceptually:
 Custom Template
       ↓
 User defines:
-- Resource types
+- ResourceTypes
+- Resources
 - Activities
-- Time slots
+- TimeSlots
 - Locations
 - Constraints
       ↓
@@ -1472,13 +1540,12 @@ PlanningProblem
 
 This is not required for the MVP.
 
-However, the template architecture should not prevent it.
+The current architecture should nevertheless avoid preventing such an
+extension.
 
 ---
 
-# 38. Layer Responsibility
-
-The architecture separates responsibilities as follows.
+# 21. Layer Responsibilities
 
 ## Template / Application Layer
 
@@ -1489,8 +1556,9 @@ Terminology
 Template configuration
 Default values
 Default constraints
+Default weights
 UI metadata
-Transformation
+Transformation into PlanningProblem
 ```
 
 ## Domain Layer
@@ -1499,12 +1567,26 @@ Responsible for:
 
 ```text
 PlanningProblem
+PlanningHorizon
+ResourceType
 Resource
 Activity
+ResourceRequirement
 TimeSlot
 Location
 Constraint
 Schedule
+Assignment
+```
+
+## Validation
+
+Responsible for:
+
+```text
+Structural PlanningProblem validation
+Reference validation
+Configuration consistency
 ```
 
 ## Genetic Engine
@@ -1512,181 +1594,312 @@ Schedule
 Responsible for:
 
 ```text
-Encoding
-Population
+Assignment candidate generation
+Genotype encoding / decoding
+Population evolution
 Selection
 Crossover
 Mutation
-Evolution
+Elitism
 Fitness integration
+Termination
+OptimizationResult
 ```
 
-This separation ensures that planning domains and optimization remain decoupled.
+This separation keeps domain-specific configuration independent from
+optimization.
 
 ---
 
-# 39. Architecture Diagram
+# 22. Implementation Decisions
 
-The intended architecture is:
+### PT1 — Templates are adapters
 
-```text
-                ┌───────────────────┐
-                │   Genetic Planner │
-                └─────────┬─────────┘
-                          │
-             ┌────────────┴────────────┐
-             │                         │
-             ▼                         ▼
-    Academic Template          Work Shift Template
-             │                         │
-             │                         │
-             └────────────┬────────────┘
-                          │
-                          ▼
-                 PlanningProblem
-                          │
-                          ▼
-                 ProblemValidator
-                          │
-                          ▼
-                ┌────────────────┐
-                │ Genetic Engine │
-                └───────┬────────┘
-                        │
-                        ▼
-                     Schedule
-```
+Templates translate domain-oriented configuration into the generic
+planning model.
 
-The important architectural boundary is:
+### PT2 — PlanningProblem is the common contract
 
-```text
-Templates
-    ↓
-PlanningProblem
-────────────
-Genetic Engine
-```
-
----
-
-# 40. Design Decisions
-
-## PT1 — Templates are adapters
-
-Planning templates translate domain-oriented configuration into the generic planning model.
-
-## PT2 — PlanningProblem is the common contract
-
-Every template produces:
+Every template ultimately produces the same:
 
 ```text
 PlanningProblem
 ```
 
-## PT3 — Academic Template is the primary MVP template
+### PT3 — Academic Scheduling is the primary MVP template
 
 Academic Scheduling must be supported end-to-end.
 
-## PT4 — Work Shift Template validates genericity
+### PT4 — Work Shift Scheduling validates genericity
 
-The Work Shift Template demonstrates that the same domain and Genetic Engine can support a second planning scenario.
+Work Shift Scheduling provides a second substantially different planning
+scenario using the same model and Genetic Engine.
 
-## PT5 — Templates provide defaults
+### PT5 — Templates provide defaults
 
-Templates may define:
+Templates may provide:
 
 ```text
-Resource types
+ResourceTypes
 Terminology
 Constraints
 Weights
 Optimization preset
 ```
 
-## PT6 — Defaults are configurable
+### PT6 — Defaults are configurable
 
-Template defaults are starting values, not fixed behavior.
+Defaults are starting values rather than fixed Genetic Engine behaviour.
 
-## PT7 — Templates may use template-specific configuration classes
+### PT7 — Template-specific configuration remains outside the domain
 
-These classes remain outside the generic domain.
+Classes such as:
 
-## PT8 — Templates use the generic constraint catalogue
+```text
+AcademicTemplateConfig
+WorkShiftTemplateConfig
+```
 
-No separate template-specific constraint engine is created.
+belong to the application/template layer.
 
-## PT9 — Genetic Engine is completely template-independent
+### PT8 — Templates use the generic constraint catalogue
 
-No domain-specific type or conditional logic may exist inside the Genetic Engine.
+No separate Academic or Work Shift constraint engine exists.
 
-## PT10 — templateType is metadata only
+### PT9 — The Genetic Engine is template-independent
 
-It may be stored in `PlanningProblem`, but it must not influence genetic optimization.
+No domain-specific branching is permitted in the Genetic Engine.
 
-## PT11 — Future templates require no Genetic Engine modification
+### PT10 — templateType is metadata only
 
-Adding another domain should require only a new template and corresponding UI/configuration.
+`PlanningProblem.templateType` must never influence optimization.
+
+### PT11 — Atomic Activities are created by templates
+
+Templates are responsible for expanding recurring user concepts into
+individual atomic Activities when required.
+
+This preserves:
+
+```text
+one Activity = one genetic decision
+```
+
+### PT12 — Templates do not determine feasibility
+
+Templates configure constraints.
+
+Constraint evaluation determines Schedule feasibility.
+
+### PT13 — Template architecture remains an application concern
+
+The generic domain and Genetic Engine do not depend on the existence of
+a particular `PlanningTemplate` interface or registry implementation.
 
 ---
 
-# 41. Summary
+# 23. Changes from Initial Design
 
-The Planning Template architecture follows:
+The template architecture was refined during implementation of the
+generic domain and Genetic Engine.
+
+## 23.1 Constraint Catalogue
+
+The initial template design referenced:
 
 ```text
-Academic Template ───────┐
+MaximumAssignmentsConstraint
+MinimumAssignmentsConstraint
+CapacityConstraint
+DifferentDayConstraint
+```
+
+The implemented M2 catalogue is:
+
+```text
+HARD
+├── NoOverlapConstraint
+├── AvailabilityConstraint
+├── RequiredResourceConstraint
+└── LocationCapacityConstraint
+
+SOFT
+├── PreferredTimeSlotConstraint
+├── MaxConsecutiveConstraint
+└── BalancedWorkloadConstraint
+```
+
+Template defaults have therefore been updated to use the implemented
+catalogue.
+
+---
+
+## 23.2 Capacity
+
+Capacity was initially described mainly as optional Location metadata.
+
+The implemented model explicitly represents:
+
+```text
+Location.capacity
+```
+
+and:
+
+```text
+Activity.requiredLocationCapacity
+```
+
+with:
+
+```text
+LocationCapacityConstraint
+```
+
+performing the corresponding evaluation.
+
+---
+
+## 23.3 Constraint Weights
+
+The initial design suggested fixed example values such as:
+
+```text
+HARD = 1000
+```
+
+The implemented architecture has no global HARD multiplier.
+
+Every Constraint owns its configurable weight and uses:
+
+```text
+weightedPenalty =
+rawPenalty × weight
+```
+
+The actual default values belong to template/application configuration.
+
+---
+
+## 23.4 Workload Balancing
+
+The initial Work Shift design used:
+
+```text
+MaximumAssignmentsConstraint
+MinimumAssignmentsConstraint
+```
+
+The implemented M2 catalogue instead provides:
+
+```text
+BalancedWorkloadConstraint
+```
+
+as the generic SOFT workload distribution objective.
+
+Explicit minimum or maximum assignment constraints remain possible
+future extensions.
+
+---
+
+## 23.5 Optimization Output
+
+The initial architecture represented the Genetic Engine output mainly as:
+
+```text
+Schedule
+```
+
+The implemented engine returns:
+
+```text
+OptimizationResult
+```
+
+which contains:
+
+```text
+Schedule
+ScheduleEvaluation
+Generations executed
+Execution time
+Random seed
+```
+
+The Schedule itself remains independent from optimization metadata.
+
+---
+
+## 23.6 Template Implementation Status
+
+The original document presented conceptual interfaces and configuration
+classes without always distinguishing them from implemented components.
+
+At the end of M2:
+
+```text
+Generic domain model       → implemented
+Problem validation         → implemented
+Constraint evaluation      → implemented
+Genetic Engine             → implemented
+OptimizationResult         → implemented
+
+Academic Template          → M3
+Work Shift Template        → M3 / secondary scenario
+Template UI                → M3
+Template registry          → M3 if required
+```
+
+This distinction avoids treating planned application-layer structures as
+existing production code.
+
+---
+
+# 24. Current Architecture Summary
+
+At the end of M2:
+
+```text
+                    TEMPLATE LAYER
+                     (M3 work)
+                         │
+          ┌──────────────┴──────────────┐
+          │                             │
+          ▼                             ▼
+ Academic Template              Work Shift Template
+          │                             │
+          └──────────────┬──────────────┘
                          │
                          ▼
                   PlanningProblem
                          │
                          ▼
-                  Genetic Engine
-                         ▲
+                  ProblemValidator
                          │
-Work Shift Template ─────┘
+                         ▼
+               Assignment Candidates
+                         │
+                         ▼
+                 Genotype Codec
+                         │
+                         ▼
+                   Jenetics Engine
+                         │
+                         ▼
+                     Schedule
+                         │
+                         ▼
+               ConstraintEvaluator
+                         │
+                         ▼
+                OptimizationResult
 ```
 
-The Academic Template maps:
+The important architectural invariant is:
 
-```text
-Teacher          → Resource
-Student Group    → Resource
-Class            → Activity
-Classroom        → Location
-Teaching Period  → TimeSlot
-```
+> **The template determines how a planning problem is expressed; the
+> Genetic Engine determines how that generic problem is optimized.**
 
-The Work Shift Template maps:
-
-```text
-Employee         → Resource
-Work Assignment  → Activity
-Workplace        → Location
-Shift            → TimeSlot
-```
-
-Both produce exactly the same:
-
-```text
-PlanningProblem
-```
-
-The Genetic Engine only sees:
-
-```text
-Resources
-Activities
-ResourceRequirements
-TimeSlots
-Locations
-Constraints
-```
-
-and remains completely independent from:
-
-```text
-Academic Scheduling
-Work Shift Scheduling
-```
-
-This allows Genetic Planner to support specific and user-friendly planning scenarios while preserving a reusable and generic optimization engine.
+Academic Scheduling and Work Shift Scheduling therefore differ before
+the `PlanningProblem` boundary, not inside the Genetic Engine.
