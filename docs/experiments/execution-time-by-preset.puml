@@ -1,0 +1,25 @@
+@startuml
+title Execution Time by Genetic Algorithm Preset\nSmallFeasibleDataset — Seed 42
+
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+salt
+{
+    {T
+        + Preset       | Execution time | Generations
+        FAST           | 294 ms         | 100
+        BALANCED       | 367 ms         | 300
+        EXHAUSTIVE     | 1192 ms        | 1000
+    }
+}
+
+note bottom
+All three presets reached fitness 0.0.
+
+Execution time increased with the more computationally
+intensive configurations, while solution quality remained
+unchanged for this small dataset.
+end note
+
+@enduml

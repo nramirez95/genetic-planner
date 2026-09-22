@@ -1,0 +1,4 @@
+preset,fitness,hardViolations,softPenalty,executionTimeMs,generations,seed
+FAST,0.0,0,0.0,294,100,42
+BALANCED,0.0,0,0.0,367,300,42
+EXHAUSTIVE,0.0,0,0.0,1192,1000,42

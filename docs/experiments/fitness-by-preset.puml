@@ -1,0 +1,30 @@
+@startuml
+title Fitness by Genetic Algorithm Preset\nSmallFeasibleDataset — Seed 42
+
+skinparam shadowing false
+skinparam roundcorner 10
+skinparam defaultFontName Arial
+
+rectangle "FAST" as FAST {
+    card "Fitness\n\n**0.0**" as F1
+}
+
+rectangle "BALANCED" as BALANCED {
+    card "Fitness\n\n**0.0**" as F2
+}
+
+rectangle "EXHAUSTIVE" as EXHAUSTIVE {
+    card "Fitness\n\n**0.0**" as F3
+}
+
+FAST -[hidden]-> BALANCED
+BALANCED -[hidden]-> EXHAUSTIVE
+
+note bottom
+All presets reached the known optimal fitness of 0.0.
+
+HARD violations: 0
+Soft penalty: 0.0
+end note
+
+@enduml
