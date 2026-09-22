@@ -5,7 +5,8 @@ data class GeneticAlgorithmConfig(
     val generationLimit: Int,
     val mutationProbability: Double,
     val crossoverProbability: Double,
-    val eliteCount: Int
+    val eliteCount: Int,
+    val randomSeed: Long? = null
 ) {
 
     init {

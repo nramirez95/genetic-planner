@@ -243,4 +243,40 @@ class GeneticAlgorithmConfigTest {
 
         assertEquals(9, config.eliteCount)
     }
+
+    @Test
+    fun `random seed is optional`() {
+        val config =
+            GeneticAlgorithmConfig(
+                populationSize = 20,
+                generationLimit = 10,
+                mutationProbability = 0.10,
+                crossoverProbability = 0.70,
+                eliteCount = 2
+            )
+
+        assertEquals(
+            null,
+            config.randomSeed
+        )
+    }
+
+    @Test
+    fun `accepts random seed`() {
+        val config =
+            GeneticAlgorithmConfig(
+                populationSize = 20,
+                generationLimit = 10,
+                mutationProbability = 0.10,
+                crossoverProbability = 0.70,
+                eliteCount = 2,
+                randomSeed = 42L
+            )
+
+        assertEquals(
+            42L,
+            config.randomSeed
+        )
+    }
+
 }

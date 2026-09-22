@@ -12,8 +12,13 @@ import io.jenetics.Optimize
 import io.jenetics.SinglePointCrossover
 import io.jenetics.TournamentSelector
 import io.jenetics.engine.Engine
+import io.jenetics.engine.EvolutionResult
 import io.jenetics.engine.Limits
+import io.jenetics.util.RandomRegistry
 import java.time.Duration
+import java.util.Random
+import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.Executor
 
 class JeneticsEngine(
     private val candidateGenerator: AssignmentCandidateGenerator =
@@ -27,6 +32,18 @@ class JeneticsEngine(
 
         val startTime =
             System.nanoTime()
+
+        /*
+         * Use the provided seed when available.
+         *
+         * When no seed is provided, generate one and record it so
+         * that the execution can be reproduced afterwards.
+         */
+        val usedRandomSeed =
+            config.randomSeed
+                ?: ThreadLocalRandom
+                    .current()
+                    .nextLong()
 
         /*
          * 1. Generate all structurally valid assignment options.
@@ -51,7 +68,8 @@ class JeneticsEngine(
             )
 
         /*
-         * 3. Create the constraint evaluator used as fitness function.
+         * 3. Create the constraint evaluator used by the
+         * fitness function.
          */
         val constraintEvaluator =
             ConstraintEvaluator(
@@ -59,77 +77,105 @@ class JeneticsEngine(
             )
 
         /*
-         * 4. Build the genetic engine.
+         * 4. Execute the complete genetic process with a scoped
+         * deterministic random generator.
+         *
+         * RandomRegistry.with(...) returns a Runner in Jenetics 9.1.
+         * Runner.call(...) executes a value-returning operation
+         * inside that random scope.
          */
-        val engine =
-            Engine.builder(
-                { genotype ->
-                    val schedule =
-                        codec.decode(genotype)
+        lateinit var evolutionResults:
+                List<EvolutionResult<IntegerGene, Double>>
 
-                    constraintEvaluator
-                        .evaluate(schedule)
-                        .fitness
-                },
-                codec.createGenotype()
-            )
-                .optimize(Optimize.MINIMUM)
-                .populationSize(config.populationSize)
-                .survivorsSize(config.eliteCount)
-                .survivorsSelector(
-                    EliteSelector()
-                )
-                .offspringSelector(
-                    TournamentSelector(TOURNAMENT_SIZE)
-                )
-                .alterers(
-                    SinglePointCrossover<IntegerGene, Double>(
-                        config.crossoverProbability
-                    ),
-                    Mutator<IntegerGene, Double>(
-                        config.mutationProbability
+        RandomRegistry
+            .with(Random(usedRandomSeed))
+            .run {
+                val engine =
+                    Engine.builder(
+                        { genotype ->
+                            val schedule =
+                                codec.decode(genotype)
+
+                            constraintEvaluator
+                                .evaluate(schedule)
+                                .fitness
+                        },
+                        codec.createGenotype()
                     )
-                )
-                .build()
+                        .optimize(Optimize.MINIMUM)
+                        .populationSize(
+                            config.populationSize
+                        )
+                        .survivorsSize(
+                            config.eliteCount
+                        )
+                        .survivorsSelector(
+                            EliteSelector()
+                        )
+                        .offspringSelector(
+                            TournamentSelector(
+                                TOURNAMENT_SIZE
+                            )
+                        )
+                        .alterers(
+                            SinglePointCrossover<IntegerGene, Double>(
+                                config.crossoverProbability
+                            ),
+                            Mutator<IntegerGene, Double>(
+                                config.mutationProbability
+                            )
+                        )
+                        .executor(DIRECT_EXECUTOR)
+                        .build()
+
+                evolutionResults =
+                    engine.stream()
+                        .limit(
+                            Limits.byFixedGeneration(
+                                config.generationLimit.toLong()
+                            )
+                        )
+                        .toList()
+            }
 
         /*
-         * 5. Execute all configured generations.
-         */
-        val evolutionResults =
-            engine.stream()
-                .limit(
-                    Limits.byFixedGeneration(
-                        config.generationLimit.toLong()
-                    )
-                )
-                .toList()
-
-        /*
-         * 6. Select the best phenotype found during the complete run.
+         * 5. Select the best phenotype found during all
+         * executed generations.
          */
         val bestPhenotype =
             evolutionResults
-                .map { it.bestPhenotype() }
-                .minBy { it.fitness() }
+                .map { evolutionResult ->
+                    evolutionResult.bestPhenotype()
+                }
+                .minBy { phenotype ->
+                    phenotype.fitness()
+                }
 
+        /*
+         * 6. Record the actual number of generations executed.
+         */
         val generationsExecuted =
             evolutionResults.size.toLong()
 
         /*
-         * 7. Decode and evaluate the best schedule.
+         * 7. Decode the best genotype into the planning domain.
          */
         val bestSchedule =
             codec.decode(
                 bestPhenotype.genotype()
             )
 
+        /*
+         * 8. Evaluate the final schedule to expose the complete
+         * constraint breakdown.
+         */
         val bestEvaluation =
             constraintEvaluator.evaluate(
                 bestSchedule
             )
 
         /*
-         * 8. Measure complete optimization execution time.
+         * 9. Measure the complete optimization execution time.
          */
         val executionTime =
             Duration.ofNanos(
@@ -137,17 +183,26 @@ class JeneticsEngine(
             )
 
         /*
-         * 9. Return a domain-oriented result.
+         * 10. Return a domain-oriented optimization result.
+         *
+         * No Jenetics-specific types escape this class.
          */
         return OptimizationResult(
             schedule = bestSchedule,
             evaluation = bestEvaluation,
             generationsExecuted = generationsExecuted,
-            executionTime = executionTime
+            executionTime = executionTime,
+            randomSeed = usedRandomSeed
         )
     }
 
     private companion object {
+
         const val TOURNAMENT_SIZE = 3
+
+        val DIRECT_EXECUTOR =
+            Executor { command ->
+                command.run()
+            }
     }
 }

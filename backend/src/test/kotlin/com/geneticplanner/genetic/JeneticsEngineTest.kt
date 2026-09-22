@@ -1,5 +1,6 @@
 package com.geneticplanner.genetic
 
+import com.geneticplanner.dataset.SmallFeasibleDataset
 import com.geneticplanner.domain.Activity
 import com.geneticplanner.domain.PlanningHorizon
 import com.geneticplanner.domain.PlanningProblem
@@ -510,6 +511,119 @@ class JeneticsEngineTest {
 
         assertFalse(
             result.executionTime.isNegative
+        )
+    }
+
+    @Test
+    fun `records provided random seed`() {
+        val problem =
+            SmallFeasibleDataset.create()
+
+        val config =
+            testConfig().copy(
+                randomSeed = 42L
+            )
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
+
+        assertEquals(
+            42L,
+            result.randomSeed
+        )
+    }
+
+    @Test
+    fun `same problem configuration and seed produce same result`() {
+        val problem =
+            SmallFeasibleDataset.create()
+
+        val config =
+            testConfig().copy(
+                randomSeed = 123456L
+            )
+
+        val firstResult =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
+
+        val secondResult =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
+
+        assertEquals(
+            firstResult.schedule,
+            secondResult.schedule
+        )
+
+        assertEquals(
+            firstResult.evaluation,
+            secondResult.evaluation
+        )
+
+        assertEquals(
+            firstResult.fitness,
+            secondResult.fitness
+        )
+
+        assertEquals(
+            firstResult.generationsExecuted,
+            secondResult.generationsExecuted
+        )
+
+        assertEquals(
+            firstResult.randomSeed,
+            secondResult.randomSeed
+        )
+    }
+
+    @Test
+    fun `generated random seed can reproduce execution`() {
+        val problem =
+            SmallFeasibleDataset.create()
+
+        val config =
+            testConfig()
+
+        val originalResult =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
+
+        val reproducedResult =
+            engine.optimize(
+                problem = problem,
+                config = config.copy(
+                    randomSeed = originalResult.randomSeed
+                )
+            )
+
+        assertEquals(
+            originalResult.schedule,
+            reproducedResult.schedule
+        )
+
+        assertEquals(
+            originalResult.evaluation,
+            reproducedResult.evaluation
+        )
+
+        assertEquals(
+            originalResult.fitness,
+            reproducedResult.fitness
+        )
+
+        assertEquals(
+            originalResult.randomSeed,
+            reproducedResult.randomSeed
         )
     }
 

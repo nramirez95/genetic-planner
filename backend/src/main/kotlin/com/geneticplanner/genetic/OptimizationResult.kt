@@ -9,7 +9,8 @@ data class OptimizationResult(
     val schedule: Schedule,
     val evaluation: ScheduleEvaluation,
     val generationsExecuted: Long,
-    val executionTime: Duration
+    val executionTime: Duration,
+    val randomSeed: Long
 ) {
 
     val fitness: Double
