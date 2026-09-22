@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm")
     kotlin("plugin.spring")
+    kotlin("plugin.jpa")
 
     id("org.springframework.boot")
 }
@@ -31,6 +32,10 @@ dependencies {
 
     // Persistence
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+
+    // Database migrations
+    implementation("org.springframework.boot:spring-boot-flyway")
+    implementation("org.flywaydb:flyway-database-postgresql")
 
     // PostgreSQL
     runtimeOnly("org.postgresql:postgresql")
