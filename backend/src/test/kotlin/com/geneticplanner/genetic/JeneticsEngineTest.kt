@@ -1,11 +1,22 @@
 package com.geneticplanner.genetic
 
-import com.geneticplanner.domain.*
+import com.geneticplanner.domain.Activity
+import com.geneticplanner.domain.PlanningHorizon
+import com.geneticplanner.domain.PlanningProblem
+import com.geneticplanner.domain.Resource
+import com.geneticplanner.domain.ResourceRequirement
+import com.geneticplanner.domain.ResourceType
+import com.geneticplanner.domain.TimeSlot
+import com.geneticplanner.domain.constraint.ConstraintType
+import com.geneticplanner.domain.constraint.hard.NoOverlapConstraint
 import com.geneticplanner.domain.constraint.soft.PreferredTimeSlotConstraint
 import com.geneticplanner.domain.evaluation.ConstraintEvaluator
 import com.geneticplanner.genetic.config.GeneticAlgorithmConfig
 import com.geneticplanner.genetic.config.GeneticAlgorithmPreset
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
 
@@ -13,14 +24,19 @@ class JeneticsEngineTest {
 
     private val engine = JeneticsEngine()
 
+    /*
+     * Basic engine execution
+     */
+
     @Test
     fun `returns a complete schedule`() {
         val problem = createProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = testConfig()
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
 
         assertEquals(
             problem.activities.size,
@@ -39,10 +55,11 @@ class JeneticsEngineTest {
     fun `returned schedule belongs to requested planning problem`() {
         val problem = createProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = testConfig()
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
 
         assertEquals(
             problem.id,
@@ -52,12 +69,14 @@ class JeneticsEngineTest {
 
     @Test
     fun `returns evaluation matching returned schedule`() {
-        val problem = createProblem()
+        val problem =
+            createPreferredTimeSlotProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = testConfig()
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = controlledSearchConfig()
+            )
 
         val expectedEvaluation =
             ConstraintEvaluator(problem.constraints)
@@ -67,27 +86,22 @@ class JeneticsEngineTest {
             expectedEvaluation,
             result.evaluation
         )
-
-        assertEquals(
-            expectedEvaluation.fitness,
-            result.fitness
-        )
-
-        assertEquals(
-            expectedEvaluation.feasible,
-            result.feasible
-        )
     }
+
+    /*
+     * Optimization behaviour
+     */
 
     @Test
     fun `minimizes fitness on controlled problem`() {
         val problem =
             createPreferredTimeSlotProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = controlledSearchConfig()
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = controlledSearchConfig()
+            )
 
         assertEquals(
             0.0,
@@ -107,39 +121,58 @@ class JeneticsEngineTest {
         val problem =
             createPreferredTimeSlotProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = controlledSearchConfig()
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = controlledSearchConfig()
+            )
 
         assertTrue(result.feasible)
-        assertEquals(0.0, result.fitness)
-        assertEquals(0.0, result.evaluation.hardPenalty)
-        assertEquals(0.0, result.evaluation.softPenalty)
+
+        assertEquals(
+            0.0,
+            result.hardPenalty
+        )
+
+        assertEquals(
+            0.0,
+            result.softPenalty
+        )
+
+        assertEquals(
+            0.0,
+            result.fitness
+        )
     }
 
     @Test
     fun `executes configured generations`() {
         val problem = createProblem()
 
-        val config = GeneticAlgorithmConfig(
-            populationSize = 20,
-            generationLimit = 5,
-            mutationProbability = 0.10,
-            crossoverProbability = 0.70,
-            eliteCount = 2
-        )
+        val config =
+            GeneticAlgorithmConfig(
+                populationSize = 20,
+                generationLimit = 5,
+                mutationProbability = 0.10,
+                crossoverProbability = 0.70,
+                eliteCount = 2
+            )
 
-        val result = engine.optimize(
-            problem = problem,
-            config = config
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
 
         assertEquals(
             5L,
             result.generationsExecuted
         )
     }
+
+    /*
+     * Invalid problem / candidate generation
+     */
 
     @Test
     fun `rejects problem when activity has no assignment candidates`() {
@@ -157,35 +190,43 @@ class JeneticsEngineTest {
             }
 
         assertTrue(
-            exception.message.orEmpty()
+            exception.message
+                .orEmpty()
                 .contains("activity-no-options")
         )
     }
+
+    /*
+     * GA configuration integration
+     */
 
     @Test
     fun `works when elite count is zero`() {
         val problem = createProblem()
 
-        val config = GeneticAlgorithmConfig(
-            populationSize = 20,
-            generationLimit = 5,
-            mutationProbability = 0.10,
-            crossoverProbability = 0.70,
-            eliteCount = 0
-        )
+        val config =
+            GeneticAlgorithmConfig(
+                populationSize = 20,
+                generationLimit = 5,
+                mutationProbability = 0.10,
+                crossoverProbability = 0.70,
+                eliteCount = 0
+            )
 
-        val result = engine.optimize(
-            problem = problem,
-            config = config
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
+
+        assertEquals(
+            5L,
+            result.generationsExecuted
         )
 
         assertEquals(
             problem.activities.size,
             result.schedule.assignments.size
-        )
-
-        assertTrue(
-            result.generationsExecuted > 0
         )
     }
 
@@ -193,49 +234,152 @@ class JeneticsEngineTest {
     fun `works with fast preset`() {
         val problem = createProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = GeneticAlgorithmPreset.FAST.toConfig()
-        )
+        val config =
+            GeneticAlgorithmPreset.FAST.toConfig()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = config
+            )
 
         assertEquals(
-            problem.id,
-            result.schedule.planningProblemId
+            config.generationLimit.toLong(),
+            result.generationsExecuted
         )
 
         assertEquals(
             problem.activities.size,
             result.schedule.assignments.size
         )
+    }
 
-        assertTrue(
-            result.generationsExecuted > 0
+    /*
+     * Single and multiple activities
+     */
+
+    @Test
+    fun `optimizes problem with single activity`() {
+        val problem =
+            createSingleActivityProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        assertEquals(
+            1,
+            result.schedule.assignments.size
+        )
+
+        assertEquals(
+            "activity-1",
+            result.schedule.assignments
+                .single()
+                .activityId
         )
     }
+
+    @Test
+    fun `optimizes problem with multiple activities`() {
+        val problem = createProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        assertEquals(
+            problem.activities.size,
+            result.schedule.assignments.size
+        )
+
+        assertEquals(
+            problem.activities.map { it.id }.toSet(),
+            result.schedule.assignments
+                .map { it.activityId }
+                .toSet()
+        )
+    }
+
+    /*
+     * Hard constraints
+     */
+
+    @Test
+    fun `hard constraint violation produces infeasible result`() {
+        val problem =
+            createUnavoidableHardViolationProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        assertFalse(result.feasible)
+
+        assertTrue(
+            result.hardPenalty > 0.0
+        )
+
+        assertEquals(
+            0.0,
+            result.softPenalty
+        )
+
+        assertTrue(
+            result.constraintResults.any {
+                it.type == ConstraintType.HARD &&
+                        it.violations > 0
+            }
+        )
+    }
+
+    /*
+     * Soft constraints
+     */
 
     @Test
     fun `soft constraint violation does not make result infeasible`() {
         val problem =
             createUnavoidableSoftViolationProblem()
 
-        val result = engine.optimize(
-            problem = problem,
-            config = testConfig()
-        )
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
 
-        assertTrue(
-            result.evaluation.softPenalty > 0.0
-        )
+        assertTrue(result.feasible)
 
         assertEquals(
             0.0,
-            result.evaluation.hardPenalty
+            result.hardPenalty
         )
 
         assertTrue(
-            result.feasible
+            result.softPenalty > 0.0
+        )
+
+        assertTrue(
+            result.fitness > 0.0
+        )
+
+        assertTrue(
+            result.constraintResults.any {
+                it.type == ConstraintType.SOFT &&
+                        it.violations > 0
+            }
         )
     }
+
+    /*
+     * OptimizationResult
+     */
 
     @Test
     fun `optimization result exposes fitness and penalty breakdown`() {
@@ -282,18 +426,21 @@ class JeneticsEngineTest {
 
         assertEquals(
             "preferred-time",
-            result.constraintResults.single().constraintId
+            result.constraintResults
+                .single()
+                .constraintId
         )
 
         assertTrue(
-            result.constraintResults.single().violations > 0
+            result.constraintResults
+                .single()
+                .violations > 0
         )
     }
 
     @Test
     fun `optimization result includes execution time`() {
-        val problem =
-            createProblem()
+        val problem = createProblem()
 
         val result =
             engine.optimize(
@@ -306,45 +453,86 @@ class JeneticsEngineTest {
         )
     }
 
+    @Test
+    fun `returns complete optimization result`() {
+        val problem =
+            createUnavoidableSoftViolationProblem()
+
+        val result =
+            engine.optimize(
+                problem = problem,
+                config = testConfig()
+            )
+
+        val expectedEvaluation =
+            ConstraintEvaluator(problem.constraints)
+                .evaluate(result.schedule)
+
+        assertEquals(
+            problem.id,
+            result.schedule.planningProblemId
+        )
+
+        assertEquals(
+            expectedEvaluation,
+            result.evaluation
+        )
+
+        assertEquals(
+            expectedEvaluation.fitness,
+            result.fitness
+        )
+
+        assertEquals(
+            expectedEvaluation.feasible,
+            result.feasible
+        )
+
+        assertEquals(
+            expectedEvaluation.hardPenalty,
+            result.hardPenalty
+        )
+
+        assertEquals(
+            expectedEvaluation.softPenalty,
+            result.softPenalty
+        )
+
+        assertEquals(
+            expectedEvaluation.constraintResults,
+            result.constraintResults
+        )
+
+        assertEquals(
+            testConfig().generationLimit.toLong(),
+            result.generationsExecuted
+        )
+
+        assertFalse(
+            result.executionTime.isNegative
+        )
+    }
+
     /*
-     * Generic problem with two activities and two possible time slots.
+     * Fixtures
      */
-    private fun createProblem(): PlanningProblem {
-        val slot1 = TimeSlot(
-            id = "slot-1",
-            start = dateTime(9),
-            end = dateTime(10)
-        )
 
-        val slot2 = TimeSlot(
-            id = "slot-2",
-            start = dateTime(10),
-            end = dateTime(11)
-        )
-
-        return PlanningProblem(
+    private fun createProblem(): PlanningProblem =
+        PlanningProblem(
             id = "problem-1",
             name = "Test problem",
-            planningHorizon = PlanningHorizon(
-                start = dateTime(8),
-                end = dateTime(18)
-            ),
+            planningHorizon = horizon(),
             resourceTypes = listOf(
-                ResourceType(
-                    id = "worker",
-                    name = "Worker"
-                )
+                workerType()
             ),
             resources = listOf(
-                Resource(
+                worker(
                     id = "resource-1",
-                    name = "Resource 1",
-                    typeId = "worker"
+                    name = "Resource 1"
                 ),
-                Resource(
+                worker(
                     id = "resource-2",
-                    name = "Resource 2",
-                    typeId = "worker"
+                    name = "Resource 2"
                 )
             ),
             activities = listOf(
@@ -372,55 +560,82 @@ class JeneticsEngineTest {
                 )
             ),
             timeSlots = listOf(
-                slot1,
-                slot2
+                timeSlot(
+                    id = "slot-1",
+                    startHour = 9,
+                    endHour = 10
+                ),
+                timeSlot(
+                    id = "slot-2",
+                    startHour = 10,
+                    endHour = 11
+                )
+            )
+        )
+
+    private fun createSingleActivityProblem(): PlanningProblem =
+        PlanningProblem(
+            id = "single-activity-problem",
+            name = "Single activity problem",
+            planningHorizon = horizon(),
+            resourceTypes = listOf(
+                workerType()
             ),
-            locations = emptyList(),
-            constraints = emptyList()
+            resources = listOf(
+                worker()
+            ),
+            activities = listOf(
+                Activity(
+                    id = "activity-1",
+                    name = "Activity 1",
+                    resourceRequirements = listOf(
+                        ResourceRequirement(
+                            id = "requirement-1",
+                            resourceTypeId = "worker",
+                            quantity = 1
+                        )
+                    )
+                )
+            ),
+            timeSlots = listOf(
+                timeSlot(
+                    id = "slot-1",
+                    startHour = 9,
+                    endHour = 10
+                )
+            )
         )
-    }
 
-    /*
-     * One activity can be assigned either to:
-     *
-     * slot-preferred -> penalty 0
-     * slot-other     -> penalty 10
-     *
-     * This gives us a controlled optimization problem where the
-     * optimum is known in advance.
-     */
     private fun createPreferredTimeSlotProblem(): PlanningProblem {
-        val preferredSlot = TimeSlot(
-            id = "slot-preferred",
-            start = dateTime(9),
-            end = dateTime(10)
-        )
+        val preferredSlot =
+            timeSlot(
+                id = "slot-preferred",
+                startHour = 9,
+                endHour = 10
+            )
 
-        val otherSlot = TimeSlot(
-            id = "slot-other",
-            start = dateTime(10),
-            end = dateTime(11)
-        )
+        val otherSlot =
+            timeSlot(
+                id = "slot-other",
+                startHour = 10,
+                endHour = 11
+            )
 
-        val preferenceConstraint =
+        val preferredTimeConstraint =
             PreferredTimeSlotConstraint(
                 id = "preferred-time",
                 name = "Preferred time",
                 weight = 10.0,
                 preferredTimeSlotIdsByActivityId = mapOf(
-                    "activity-1" to setOf(
-                        "slot-preferred"
-                    )
+                    "activity-1" to
+                            setOf("slot-preferred")
                 )
             )
 
         return PlanningProblem(
-            id = "preferred-problem",
-            name = "Preferred time slot problem",
-            planningHorizon = PlanningHorizon(
-                start = dateTime(8),
-                end = dateTime(18)
-            ),
+            id = "preferred-time-problem",
+            name = "Preferred time problem",
+            planningHorizon = horizon(),
             activities = listOf(
                 Activity(
                     id = "activity-1",
@@ -433,42 +648,34 @@ class JeneticsEngineTest {
                 otherSlot
             ),
             constraints = listOf(
-                preferenceConstraint
+                preferredTimeConstraint
             )
         )
     }
 
-    /*
-     * The only available time slot violates the soft preference.
-     * The result therefore has positive soft penalty but remains
-     * feasible because no HARD constraint is violated.
-     */
     private fun createUnavoidableSoftViolationProblem(): PlanningProblem {
-        val availableSlot = TimeSlot(
-            id = "slot-other",
-            start = dateTime(10),
-            end = dateTime(11)
-        )
+        val availableSlot =
+            timeSlot(
+                id = "slot-other",
+                startHour = 10,
+                endHour = 11
+            )
 
-        val preferenceConstraint =
+        val preferredTimeConstraint =
             PreferredTimeSlotConstraint(
                 id = "preferred-time",
                 name = "Preferred time",
                 weight = 10.0,
                 preferredTimeSlotIdsByActivityId = mapOf(
-                    "activity-1" to setOf(
-                        "slot-not-available"
-                    )
+                    "activity-1" to
+                            setOf("slot-preferred")
                 )
             )
 
         return PlanningProblem(
             id = "soft-violation-problem",
             name = "Soft violation problem",
-            planningHorizon = PlanningHorizon(
-                start = dateTime(8),
-                end = dateTime(18)
-            ),
+            planningHorizon = horizon(),
             activities = listOf(
                 Activity(
                     id = "activity-1",
@@ -480,25 +687,82 @@ class JeneticsEngineTest {
                 availableSlot
             ),
             constraints = listOf(
-                preferenceConstraint
+                preferredTimeConstraint
             )
         )
     }
 
-    /*
-     * allowedTimeSlotIds = emptySet() explicitly means that the
-     * activity cannot use any time slot.
-     *
-     * Candidate generation therefore produces zero options.
-     */
-    private fun createProblemWithActivityWithoutCandidates(): PlanningProblem {
+    private fun createUnavoidableHardViolationProblem(): PlanningProblem {
+        val slot =
+            timeSlot(
+                id = "slot-1",
+                startHour = 9,
+                endHour = 10
+            )
+
+        val noOverlapConstraint =
+            NoOverlapConstraint(
+                id = "no-overlap",
+                name = "No resource overlap",
+                weight = 1000.0,
+                timeSlots = listOf(slot)
+            )
+
         return PlanningProblem(
+            id = "hard-violation-problem",
+            name = "Hard violation problem",
+            planningHorizon = horizon(),
+            resourceTypes = listOf(
+                workerType()
+            ),
+            resources = listOf(
+                worker()
+            ),
+            activities = listOf(
+                Activity(
+                    id = "activity-1",
+                    name = "Activity 1",
+                    resourceRequirements = listOf(
+                        ResourceRequirement(
+                            id = "requirement-1",
+                            resourceTypeId = "worker",
+                            quantity = 1,
+                            candidateResourceIds =
+                                setOf("resource-1")
+                        )
+                    ),
+                    allowedTimeSlotIds =
+                        setOf("slot-1")
+                ),
+                Activity(
+                    id = "activity-2",
+                    name = "Activity 2",
+                    resourceRequirements = listOf(
+                        ResourceRequirement(
+                            id = "requirement-2",
+                            resourceTypeId = "worker",
+                            quantity = 1,
+                            candidateResourceIds =
+                                setOf("resource-1")
+                        )
+                    ),
+                    allowedTimeSlotIds =
+                        setOf("slot-1")
+                )
+            ),
+            timeSlots = listOf(slot),
+            constraints = listOf(
+                noOverlapConstraint
+            )
+        )
+    }
+
+    private fun createProblemWithActivityWithoutCandidates():
+            PlanningProblem =
+        PlanningProblem(
             id = "invalid-problem",
             name = "Problem without candidates",
-            planningHorizon = PlanningHorizon(
-                start = dateTime(8),
-                end = dateTime(18)
-            ),
+            planningHorizon = horizon(),
             activities = listOf(
                 Activity(
                     id = "activity-no-options",
@@ -508,18 +772,14 @@ class JeneticsEngineTest {
                 )
             ),
             timeSlots = listOf(
-                TimeSlot(
+                timeSlot(
                     id = "slot-1",
-                    start = dateTime(9),
-                    end = dateTime(10)
+                    startHour = 9,
+                    endHour = 10
                 )
             )
         )
-    }
 
-    /*
-     * Small configuration keeps unit tests fast.
-     */
     private fun testConfig() =
         GeneticAlgorithmConfig(
             populationSize = 20,
@@ -529,11 +789,6 @@ class JeneticsEngineTest {
             eliteCount = 2
         )
 
-    /*
-     * The controlled problem only has two possible solutions.
-     * A larger population makes it overwhelmingly likely that
-     * both alternatives are represented in the initial population.
-     */
     private fun controlledSearchConfig() =
         GeneticAlgorithmConfig(
             populationSize = 100,
@@ -543,7 +798,42 @@ class JeneticsEngineTest {
             eliteCount = 5
         )
 
-    private fun dateTime(hour: Int): LocalDateTime =
+    private fun horizon() =
+        PlanningHorizon(
+            start = dateTime(8),
+            end = dateTime(18)
+        )
+
+    private fun workerType() =
+        ResourceType(
+            id = "worker",
+            name = "Worker"
+        )
+
+    private fun worker(
+        id: String = "resource-1",
+        name: String = "Resource 1"
+    ) =
+        Resource(
+            id = id,
+            name = name,
+            typeId = "worker"
+        )
+
+    private fun timeSlot(
+        id: String,
+        startHour: Int,
+        endHour: Int
+    ) =
+        TimeSlot(
+            id = id,
+            start = dateTime(startHour),
+            end = dateTime(endHour)
+        )
+
+    private fun dateTime(
+        hour: Int
+    ): LocalDateTime =
         LocalDateTime.of(
             2026,
             1,
