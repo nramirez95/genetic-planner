@@ -43,6 +43,8 @@ dependencies {
     // Health / diagnostics
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+
     // Jenetics
     implementation("io.jenetics:jenetics:9.1.0")
 
