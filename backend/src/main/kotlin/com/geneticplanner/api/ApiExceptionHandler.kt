@@ -1,6 +1,9 @@
 package com.geneticplanner.api
 
+import com.geneticplanner.application.InvalidPlanningProblemException
 import com.geneticplanner.application.PlanningAlreadyExistsException
+import com.geneticplanner.application.PlanningNotFoundException
+import com.geneticplanner.application.ScheduleGenerationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -47,6 +50,64 @@ class ApiExceptionHandler {
             status = HttpStatus.CONFLICT,
             message = exception.message
                 ?: "Planning already exists."
+        )
+
+    @ExceptionHandler(PlanningNotFoundException::class)
+    fun handlePlanningNotFound(
+        exception: PlanningNotFoundException
+    ): ResponseEntity<ApiErrorResponse> =
+        error(
+            status = HttpStatus.NOT_FOUND,
+            message = exception.message
+                ?: "Planning was not found."
+        )
+
+    @ExceptionHandler(InvalidPlanningProblemException::class)
+    fun handleInvalidPlanningProblem(
+        exception: InvalidPlanningProblemException
+    ): ResponseEntity<PlanningValidationErrorResponse> {
+
+        val status =
+            HttpStatus.BAD_REQUEST
+
+        val errors =
+            exception.validationResult.errors.map { validationError ->
+                PlanningValidationIssueResponse(
+                    code =
+                        validationError.code.name,
+                    message =
+                        validationError.message,
+                    entityType =
+                        validationError.entityType,
+                    entityId =
+                        validationError.entityId,
+                    field =
+                        validationError.field
+                )
+            }
+
+        return ResponseEntity
+            .status(status)
+            .body(
+                PlanningValidationErrorResponse(
+                    status = status.value(),
+                    error = status.reasonPhrase,
+                    message =
+                        exception.message
+                            ?: "Planning is not valid for generation.",
+                    errors = errors
+                )
+            )
+    }
+
+    @ExceptionHandler(ScheduleGenerationException::class)
+    fun handleScheduleGeneration(
+        exception: ScheduleGenerationException
+    ): ResponseEntity<ApiErrorResponse> =
+        error(
+            status = HttpStatus.INTERNAL_SERVER_ERROR,
+            message = exception.message
+                ?: "Schedule generation failed."
         )
 
     private fun error(
