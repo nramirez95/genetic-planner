@@ -1,6 +1,9 @@
 package com.geneticplanner.application
 
+import com.geneticplanner.application.mapper.OptimizationResultMapper
+import com.geneticplanner.application.model.StoredOptimizationResult
 import com.geneticplanner.application.port.out.OptimizationConfigurationPersistencePort
+import com.geneticplanner.application.port.out.OptimizationResultPersistencePort
 import com.geneticplanner.application.port.out.PlanningProblemPersistencePort
 import com.geneticplanner.dataset.TrivialDataset
 import com.geneticplanner.domain.PlanningProblem
@@ -11,6 +14,7 @@ import com.geneticplanner.genetic.config.GeneticAlgorithmConfig
 import com.geneticplanner.genetic.config.GeneticAlgorithmPreset
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -31,6 +35,12 @@ class ScheduleGenerationServiceTest {
     private lateinit var service:
             ScheduleGenerationService
 
+    private lateinit var optimizationResultPersistence:
+            FakeOptimizationResultPersistencePort
+
+    private lateinit var optimizationResultMapper:
+            OptimizationResultMapper
+
     @BeforeEach
     fun setUp() {
         planningPersistence =
@@ -38,6 +48,12 @@ class ScheduleGenerationServiceTest {
 
         optimizationPersistence =
             FakeOptimizationConfigurationPersistencePort()
+
+        optimizationResultPersistence =
+            FakeOptimizationResultPersistencePort()
+
+        optimizationResultMapper =
+            OptimizationResultMapper()
 
         geneticEngine =
             FakeGeneticEngine()
@@ -51,7 +67,11 @@ class ScheduleGenerationServiceTest {
                 geneticEngine =
                     geneticEngine,
                 problemValidator =
-                    ProblemValidator()
+                    ProblemValidator(),
+                optimizationResultPersistencePort =
+                    optimizationResultPersistence,
+                optimizationResultMapper =
+                    optimizationResultMapper
             )
     }
 
@@ -75,6 +95,10 @@ class ScheduleGenerationServiceTest {
 
         assertFalse(
             geneticEngine.optimizeCalled
+        )
+
+        assertFalse(
+            optimizationResultPersistence.saveCalled
         )
     }
 
@@ -114,6 +138,10 @@ class ScheduleGenerationServiceTest {
 
         assertFalse(
             geneticEngine.optimizeCalled
+        )
+
+        assertFalse(
+            optimizationResultPersistence.saveCalled
         )
     }
 
@@ -164,6 +192,47 @@ class ScheduleGenerationServiceTest {
         assertEquals(
             config,
             geneticEngine.receivedConfig
+        )
+
+        val storedResult =
+            optimizationResultPersistence.savedResult
+
+        assertTrue(
+            optimizationResultPersistence.saveCalled
+        )
+
+        assertNotNull(
+            storedResult
+        )
+
+        assertEquals(
+            PLANNING_ID,
+            storedResult!!.planningProblemId
+        )
+
+        assertEquals(
+            expectedResult.fitness,
+            storedResult.fitness
+        )
+
+        assertEquals(
+            expectedResult.feasible,
+            storedResult.feasible
+        )
+
+        assertEquals(
+            expectedResult.generationsExecuted,
+            storedResult.generationsExecuted
+        )
+
+        assertEquals(
+            expectedResult.schedule.assignments.size,
+            storedResult.assignments.size
+        )
+
+        assertEquals(
+            expectedResult.constraintResults.size,
+            storedResult.constraintResults.size
         )
     }
 
@@ -241,6 +310,10 @@ class ScheduleGenerationServiceTest {
 
         assertTrue(
             geneticEngine.optimizeCalled
+        )
+
+        assertFalse(
+            optimizationResultPersistence.saveCalled
         )
     }
 
@@ -377,6 +450,47 @@ class ScheduleGenerationServiceTest {
 
             return requireNotNull(result) {
                 "FakeGeneticEngine result was not configured."
+            }
+        }
+    }
+
+    private class FakeOptimizationResultPersistencePort :
+        OptimizationResultPersistencePort {
+
+        var savedResult:
+                StoredOptimizationResult? =
+            null
+
+        var saveCalled:
+                Boolean =
+            false
+
+        override fun save(
+            result: StoredOptimizationResult
+        ): StoredOptimizationResult {
+
+            saveCalled = true
+            savedResult = result
+
+            return result
+        }
+
+        override fun findByPlanningProblemId(
+            planningProblemId: String
+        ): StoredOptimizationResult? =
+            savedResult?.takeIf {
+                it.planningProblemId ==
+                        planningProblemId
+            }
+
+        override fun deleteByPlanningProblemId(
+            planningProblemId: String
+        ) {
+            if (
+                savedResult?.planningProblemId ==
+                planningProblemId
+            ) {
+                savedResult = null
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.geneticplanner.api
 
 import com.geneticplanner.application.InvalidPlanningProblemException
+import com.geneticplanner.application.OptimizationResultNotFoundException
 import com.geneticplanner.application.PlanningAlreadyExistsException
 import com.geneticplanner.application.PlanningNotFoundException
 import com.geneticplanner.application.ScheduleGenerationException
@@ -108,6 +109,19 @@ class ApiExceptionHandler {
             status = HttpStatus.INTERNAL_SERVER_ERROR,
             message = exception.message
                 ?: "Schedule generation failed."
+        )
+
+    @ExceptionHandler(
+        OptimizationResultNotFoundException::class
+    )
+    fun handleOptimizationResultNotFound(
+        exception: OptimizationResultNotFoundException
+    ): ResponseEntity<ApiErrorResponse> =
+        error(
+            status = HttpStatus.NOT_FOUND,
+            message =
+                exception.message
+                    ?: "Optimization result was not found."
         )
 
     private fun error(

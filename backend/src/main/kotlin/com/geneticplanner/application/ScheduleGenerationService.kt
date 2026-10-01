@@ -1,6 +1,8 @@
 package com.geneticplanner.application
 
+import com.geneticplanner.application.mapper.OptimizationResultMapper
 import com.geneticplanner.application.port.out.OptimizationConfigurationPersistencePort
+import com.geneticplanner.application.port.out.OptimizationResultPersistencePort
 import com.geneticplanner.application.port.out.PlanningProblemPersistencePort
 import com.geneticplanner.domain.validation.ProblemValidator
 import com.geneticplanner.genetic.GeneticEngine
@@ -15,7 +17,9 @@ class ScheduleGenerationService(
     private val optimizationConfigurationPersistencePort:
     OptimizationConfigurationPersistencePort,
     private val geneticEngine: GeneticEngine,
-    private val problemValidator: ProblemValidator
+    private val problemValidator: ProblemValidator,
+    private val optimizationResultPersistencePort: OptimizationResultPersistencePort,
+    private val optimizationResultMapper: OptimizationResultMapper
 ) {
 
     fun generate(
@@ -58,10 +62,14 @@ class ScheduleGenerationService(
          * No Jenetics implementation type leaks outside the engine.
          */
         return try {
-            geneticEngine.optimize(
-                problem = problem,
-                config = config
+            val result = geneticEngine.optimize(problem, config)
+
+            optimizationResultPersistencePort.save(
+                optimizationResultMapper.toStored(result)
             )
+
+            result
+
         } catch (exception: Exception) {
             throw ScheduleGenerationException(
                 planningId = planningId,
