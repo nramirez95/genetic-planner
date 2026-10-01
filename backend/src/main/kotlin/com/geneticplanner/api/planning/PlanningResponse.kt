@@ -13,7 +13,8 @@ data class PlanningResponse(
     val activities: List<ActivityResponse>,
     val timeSlots: List<TimeSlotResponse>,
     val locations: List<LocationResponse>,
-    val constraints: List<ConstraintResponse>
+    val constraints: List<ConstraintResponse>,
+    val optimizationConfiguration: OptimizationConfigurationResponse?
 )
 
 data class ResourceTypeResponse(

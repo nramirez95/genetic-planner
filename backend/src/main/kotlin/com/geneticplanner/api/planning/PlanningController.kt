@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
@@ -26,33 +27,41 @@ class PlanningController(
     fun create(
         @Valid @RequestBody request: PlanningRequest
     ): ResponseEntity<PlanningResponse> {
-        val problem = mapper.toDomain(request)
-        val created = planningService.create(problem)
-        val response = mapper.toResponse(created)
+
+        val configuration =
+            mapper.toConfiguration(request)
+        val created =
+            planningService.createConfiguration(configuration)
+        val response =
+            mapper.toResponse(created)
 
         return ResponseEntity
-            .created(URI.create("/api/plannings/${created.id}"))
+            .created(
+                URI.create(
+                    "/api/plannings/${created.problem.id}"
+                )
+            )
             .body(response)
     }
 
     @GetMapping
     fun findAll(): List<PlanningResponse> =
-        planningService
-            .findAll()
+        planningService.findAllConfigurations()
             .map(mapper::toResponse)
 
     @GetMapping("/{id}")
     fun findById(
         @PathVariable id: String
     ): PlanningResponse {
-        val problem =
-            planningService.findById(id)
+
+        val configuration =
+            planningService.findConfigurationById(id)
                 ?: throw ResponseStatusException(
                     HttpStatus.NOT_FOUND,
                     "Planning '$id' was not found."
                 )
 
-        return mapper.toResponse(problem)
+        return mapper.toResponse(configuration)
     }
 
     @PutMapping("/{id}")
@@ -60,10 +69,15 @@ class PlanningController(
         @PathVariable id: String,
         @Valid @RequestBody request: PlanningRequest
     ): PlanningResponse {
-        val problem = mapper.toDomain(request)
+
+        val configuration =
+            mapper.toConfiguration(request)
 
         val updated =
-            planningService.update(id, problem)
+            planningService.updateConfiguration(
+                id,
+                configuration
+            )
                 ?: throw ResponseStatusException(
                     HttpStatus.NOT_FOUND,
                     "Planning '$id' was not found."
@@ -73,10 +87,12 @@ class PlanningController(
     }
 
     @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(
         @PathVariable id: String
-    ): ResponseEntity<Void> {
-        val deleted = planningService.delete(id)
+    ) {
+        val deleted =
+            planningService.deleteConfiguration(id)
 
         if (!deleted) {
             throw ResponseStatusException(
@@ -84,7 +100,5 @@ class PlanningController(
                 "Planning '$id' was not found."
             )
         }
-
-        return ResponseEntity.noContent().build()
     }
 }

@@ -37,7 +37,10 @@ data class PlanningRequest(
     val locations: List<LocationRequest>? = null,
 
     @field:Valid
-    val constraints: List<ConstraintRequest>? = null
+    val constraints: List<ConstraintRequest>? = null,
+
+    @field:Valid
+    val optimizationConfiguration: OptimizationConfigurationRequest? = null
 )
 
 data class ResourceTypeRequest(

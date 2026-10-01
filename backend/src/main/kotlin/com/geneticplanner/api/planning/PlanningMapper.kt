@@ -1,5 +1,6 @@
 package com.geneticplanner.api.planning
 
+import com.geneticplanner.application.model.PlanningConfiguration
 import com.geneticplanner.domain.Activity
 import com.geneticplanner.domain.Location
 import com.geneticplanner.domain.PlanningHorizon
@@ -8,6 +9,7 @@ import com.geneticplanner.domain.Resource
 import com.geneticplanner.domain.ResourceRequirement
 import com.geneticplanner.domain.ResourceType
 import com.geneticplanner.domain.TimeSlot
+import com.geneticplanner.genetic.config.GeneticAlgorithmConfig
 import org.springframework.stereotype.Component
 import java.time.LocalDateTime
 
@@ -128,19 +130,44 @@ class PlanningApiMapper(
         )
     }
 
-    fun toResponse(problem: PlanningProblem): PlanningResponse =
-        PlanningResponse(
+    /*
+     * Compatibility mapper for code that still works directly
+     * with PlanningProblem.
+     */
+    fun toResponse(
+        problem: PlanningProblem
+    ): PlanningResponse =
+        toResponse(
+            PlanningConfiguration(
+                problem = problem,
+                optimizationConfiguration = null
+            )
+        )
+
+    /*
+     * Complete API response including the optional
+     * optimization configuration.
+     */
+    fun toResponse(
+        configuration: PlanningConfiguration
+    ): PlanningResponse {
+
+        val problem = configuration.problem
+
+        return PlanningResponse(
             id = problem.id,
             name = problem.name,
             templateType = problem.templateType,
             horizonStart = problem.planningHorizon.start,
             horizonEnd = problem.planningHorizon.end,
+
             resourceTypes = problem.resourceTypes.map {
                 ResourceTypeResponse(
                     id = it.id,
                     name = it.name
                 )
             },
+
             resources = problem.resources.map {
                 ResourceResponse(
                     id = it.id,
@@ -149,6 +176,7 @@ class PlanningApiMapper(
                     attributes = it.attributes
                 )
             },
+
             activities = problem.activities.map { activity ->
                 ActivityResponse(
                     id = activity.id,
@@ -174,6 +202,7 @@ class PlanningApiMapper(
                     attributes = activity.attributes
                 )
             },
+
             timeSlots = problem.timeSlots.map {
                 TimeSlotResponse(
                     id = it.id,
@@ -182,6 +211,7 @@ class PlanningApiMapper(
                     label = it.label
                 )
             },
+
             locations = problem.locations.map {
                 LocationResponse(
                     id = it.id,
@@ -191,10 +221,46 @@ class PlanningApiMapper(
                     attributes = it.attributes
                 )
             },
+
             constraints =
                 problem.constraints.map(
                     constraintApiMapper::toResponse
-                )
+                ),
+
+            optimizationConfiguration =
+                configuration.optimizationConfiguration?.let {
+                    OptimizationConfigurationResponse(
+                        populationSize = it.populationSize,
+                        generationLimit = it.generationLimit,
+                        mutationProbability = it.mutationProbability,
+                        crossoverProbability = it.crossoverProbability,
+                        eliteCount = it.eliteCount,
+                        randomSeed = it.randomSeed
+                    )
+                }
+        )
+    }
+
+    /*
+     * Converts the complete REST request into the application
+     * model used to manage planning configuration.
+     */
+    fun toConfiguration(
+        request: PlanningRequest
+    ): PlanningConfiguration =
+        PlanningConfiguration(
+            problem = toDomain(request),
+            optimizationConfiguration =
+                request.optimizationConfiguration?.let {
+                    GeneticAlgorithmConfig(
+                        populationSize = it.populationSize,
+                        generationLimit = it.generationLimit,
+                        mutationProbability = it.mutationProbability,
+                        crossoverProbability = it.crossoverProbability,
+                        eliteCount = it.eliteCount,
+                        randomSeed = it.randomSeed
+                    )
+                }
         )
 
     private fun validateTimeSlots(
@@ -225,7 +291,9 @@ class PlanningApiMapper(
         }
     }
 
-    private fun validateReferences(request: PlanningRequest) {
+    private fun validateReferences(
+        request: PlanningRequest
+    ) {
         val resourceTypeIds =
             request.resourceTypes.orEmpty()
                 .map { it.id }

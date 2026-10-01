@@ -660,7 +660,264 @@ class PlanningControllerTest {
             )
     }
 
+    @Test
+    fun `should persist and retrieve optimization configuration`() {
+        val json =
+            validPlanningJson()
+                .replace(
+                    "\"locations\": [",
+                    """
+                "optimizationConfiguration": {
+                  "populationSize": 100,
+                  "generationLimit": 250,
+                  "mutationProbability": 0.15,
+                  "crossoverProbability": 0.80,
+                  "eliteCount": 5,
+                  "randomSeed": 12345
+                },
+                "locations": [
+                """.trimIndent()
+                )
 
+        mockMvc.perform(
+            post("/api/plannings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json)
+        )
+            .andExpect(status().isCreated)
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.populationSize")
+                    .value(100)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.generationLimit")
+                    .value(250)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.mutationProbability")
+                    .value(0.15)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.crossoverProbability")
+                    .value(0.80)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.eliteCount")
+                    .value(5)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.randomSeed")
+                    .value(12345)
+            )
+
+        /*
+         * GET is deliberately performed after POST.
+         *
+         * This verifies that the optimization configuration is not only
+         * returned from the POST request but can also be reconstructed
+         * from persistence.
+         */
+        mockMvc.perform(
+            get("/api/plannings/$PLANNING_ID")
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.populationSize")
+                    .value(100)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.generationLimit")
+                    .value(250)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.mutationProbability")
+                    .value(0.15)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.crossoverProbability")
+                    .value(0.80)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.eliteCount")
+                    .value(5)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.randomSeed")
+                    .value(12345)
+            )
+    }
+
+    @Test
+    fun `should update optimization configuration`() {
+        val initialJson =
+            validPlanningJson()
+                .replace(
+                    "\"locations\": [",
+                    """
+                "optimizationConfiguration": {
+                  "populationSize": 100,
+                  "generationLimit": 250,
+                  "mutationProbability": 0.15,
+                  "crossoverProbability": 0.80,
+                  "eliteCount": 5,
+                  "randomSeed": 12345
+                },
+                "locations": [
+                """.trimIndent()
+                )
+
+        mockMvc.perform(
+            post("/api/plannings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(initialJson)
+        )
+            .andExpect(status().isCreated)
+
+        val updatedJson =
+            initialJson
+                .replace(
+                    "\"populationSize\": 100",
+                    "\"populationSize\": 200"
+                )
+                .replace(
+                    "\"generationLimit\": 250",
+                    "\"generationLimit\": 500"
+                )
+                .replace(
+                    "\"mutationProbability\": 0.15",
+                    "\"mutationProbability\": 0.20"
+                )
+                .replace(
+                    "\"eliteCount\": 5",
+                    "\"eliteCount\": 10"
+                )
+
+        mockMvc.perform(
+            put("/api/plannings/$PLANNING_ID")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updatedJson)
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.populationSize")
+                    .value(200)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.generationLimit")
+                    .value(500)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.mutationProbability")
+                    .value(0.20)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.eliteCount")
+                    .value(10)
+            )
+
+        mockMvc.perform(
+            get("/api/plannings/$PLANNING_ID")
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.populationSize")
+                    .value(200)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.generationLimit")
+                    .value(500)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.mutationProbability")
+                    .value(0.20)
+            )
+            .andExpect(
+                jsonPath("$.optimizationConfiguration.eliteCount")
+                    .value(10)
+            )
+    }
+
+    @Test
+    fun `should remove optimization configuration when omitted on update`() {
+        val jsonWithConfiguration =
+            validPlanningJson()
+                .replace(
+                    "\"locations\": [",
+                    """
+                "optimizationConfiguration": {
+                  "populationSize": 100,
+                  "generationLimit": 250,
+                  "mutationProbability": 0.15,
+                  "crossoverProbability": 0.80,
+                  "eliteCount": 5,
+                  "randomSeed": 12345
+                },
+                "locations": [
+                """.trimIndent()
+                )
+
+        mockMvc.perform(
+            post("/api/plannings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonWithConfiguration)
+        )
+            .andExpect(status().isCreated)
+
+        /*
+         * validPlanningJson() does not contain optimizationConfiguration,
+         * therefore PUT must remove the existing configuration.
+         */
+        mockMvc.perform(
+            put("/api/plannings/$PLANNING_ID")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validPlanningJson())
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.optimizationConfiguration")
+                    .doesNotExist()
+            )
+
+        mockMvc.perform(
+            get("/api/plannings/$PLANNING_ID")
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.optimizationConfiguration")
+                    .doesNotExist()
+            )
+    }
+
+    @Test
+    fun `should return 400 for invalid optimization configuration`() {
+        val invalidJson =
+            validPlanningJson()
+                .replace(
+                    "\"locations\": [",
+                    """
+                "optimizationConfiguration": {
+                  "populationSize": 100,
+                  "generationLimit": 250,
+                  "mutationProbability": 1.5,
+                  "crossoverProbability": 0.80,
+                  "eliteCount": 5,
+                  "randomSeed": 12345
+                },
+                "locations": [
+                """.trimIndent()
+                )
+
+        mockMvc.perform(
+            post("/api/plannings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidJson)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(
+                jsonPath("$.status")
+                    .value(400)
+            )
+    }
 
     private fun createPlanning() {
         mockMvc.perform(
