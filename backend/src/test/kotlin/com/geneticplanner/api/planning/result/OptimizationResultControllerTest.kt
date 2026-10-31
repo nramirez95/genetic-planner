@@ -17,6 +17,7 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
@@ -304,7 +305,79 @@ class OptimizationResultControllerTest {
                 jsonPath("$.constraintResults")
                     .isArray
             )
+
+        @Test
+        fun `should invalidate result after planning update and allow regeneration`() {
+            // 1. Create planning
+            createPlanning()
+
+            // 2. Generate initial schedule
+            mockMvc.perform(
+                post("/api/plannings/$PLANNING_ID/generate")
+            )
+                .andExpect(status().isOk)
+
+            // 3. Verify initial result exists
+            mockMvc.perform(
+                get("/api/plannings/$PLANNING_ID/result")
+            )
+                .andExpect(status().isOk)
+                .andExpect(
+                    jsonPath("$.planningId")
+                        .value(PLANNING_ID)
+                )
+
+            // 4. Update planning
+            val updatedPlanningJson =
+                validPlanningJson().replace(
+                    "Academic planning",
+                    "Updated academic planning"
+                )
+
+            mockMvc.perform(
+                put("/api/plannings/$PLANNING_ID")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(updatedPlanningJson)
+            )
+                .andExpect(status().isOk)
+                .andExpect(
+                    jsonPath("$.name")
+                        .value("Updated academic planning")
+                )
+
+            // 5. Previous result must be invalidated
+            mockMvc.perform(
+                get("/api/plannings/$PLANNING_ID/result")
+            )
+                .andExpect(status().isNotFound)
+                .andExpect(
+                    jsonPath("$.status")
+                        .value(404)
+                )
+
+            // 6. Generate a new schedule
+            mockMvc.perform(
+                post("/api/plannings/$PLANNING_ID/generate")
+            )
+                .andExpect(status().isOk)
+
+            // 7. New result must be available
+            mockMvc.perform(
+                get("/api/plannings/$PLANNING_ID/result")
+            )
+                .andExpect(status().isOk)
+                .andExpect(
+                    jsonPath("$.planningId")
+                        .value(PLANNING_ID)
+                )
+                .andExpect(
+                    jsonPath("$.assignments")
+                        .isArray
+                )
+        }
     }
+
+
 
     private fun persistResult() {
         resultPersistencePort.save(

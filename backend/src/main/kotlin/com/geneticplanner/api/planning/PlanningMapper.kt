@@ -251,17 +251,22 @@ class PlanningApiMapper(
         PlanningConfiguration(
             problem = toDomain(request),
             optimizationConfiguration =
-                request.optimizationConfiguration?.let {
-                    GeneticAlgorithmConfig(
-                        populationSize = it.populationSize,
-                        generationLimit = it.generationLimit,
-                        mutationProbability = it.mutationProbability,
-                        crossoverProbability = it.crossoverProbability,
-                        eliteCount = it.eliteCount,
-                        randomSeed = it.randomSeed
-                    )
-                }
+                toGeneticConfig(request.optimizationConfiguration)
         )
+
+    fun toGeneticConfig(
+        request: OptimizationConfigurationRequest?
+    ): GeneticAlgorithmConfig? =
+        request?.let {
+            GeneticAlgorithmConfig(
+                populationSize = it.populationSize,
+                generationLimit = it.generationLimit,
+                mutationProbability = it.mutationProbability,
+                crossoverProbability = it.crossoverProbability,
+                eliteCount = it.eliteCount,
+                randomSeed = it.randomSeed
+            )
+        }
 
     private fun validateTimeSlots(
         request: PlanningRequest,

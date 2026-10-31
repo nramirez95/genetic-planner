@@ -2,6 +2,7 @@ package com.geneticplanner.application
 
 import com.geneticplanner.application.model.PlanningConfiguration
 import com.geneticplanner.application.port.out.OptimizationConfigurationPersistencePort
+import com.geneticplanner.application.port.out.OptimizationResultPersistencePort
 import com.geneticplanner.application.port.out.PlanningProblemPersistencePort
 import com.geneticplanner.domain.PlanningProblem
 import org.springframework.stereotype.Service
@@ -11,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional
 class PlanningService(
     private val persistencePort: PlanningProblemPersistencePort,
     private val optimizationConfigurationPersistencePort:
-    OptimizationConfigurationPersistencePort
+    OptimizationConfigurationPersistencePort,
+    private val optimizationResultPersistencePort:
+    OptimizationResultPersistencePort
 ) {
 
     /*
@@ -33,6 +36,7 @@ class PlanningService(
     fun findById(id: String): PlanningProblem? =
         persistencePort.findById(id)
 
+    @Transactional
     fun update(
         id: String,
         problem: PlanningProblem
@@ -45,7 +49,12 @@ class PlanningService(
             "Planning ID in path and body must match."
         }
 
-        return persistencePort.save(problem)
+        val savedProblem = persistencePort.save(problem)
+
+        optimizationResultPersistencePort
+            .deleteByPlanningProblemId(id)
+
+        return savedProblem
     }
 
     fun delete(id: String): Boolean {
@@ -139,6 +148,9 @@ class PlanningService(
 
         val savedProblem =
             persistencePort.save(configuration.problem)
+
+        optimizationResultPersistencePort
+            .deleteByPlanningProblemId(id)
 
         val optimizationConfiguration =
             configuration.optimizationConfiguration
