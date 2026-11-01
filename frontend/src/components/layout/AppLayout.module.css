@@ -1,6 +1,10 @@
+
 .appLayout {
     min-height: 100vh;
-    background-color: var(--mui-palette-background-default, #f8fafc);
+    background-color: var(
+            --mui-palette-background-default,
+            #FAF8F5
+    );
 }
 
 .layoutContainer {
@@ -9,8 +13,15 @@
 }
 
 .mainContent {
-    min-width: 0;
     width: 100%;
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .layoutContainer {
+        padding-top: 24px;
+        padding-bottom: 32px;
+    }
 }
 
 @media (max-width: 600px) {

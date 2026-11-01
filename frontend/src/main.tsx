@@ -13,7 +13,7 @@ import {
 } from '@mui/material';
 
 import App from './App';
-import { theme } from './theme/theme';
+import theme from './theme/theme';
 
 const queryClient = new QueryClient({
     defaultOptions: {
