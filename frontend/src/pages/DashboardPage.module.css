@@ -1,0 +1,135 @@
+
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    width: 100%;
+    padding-bottom: 24px;
+}
+
+/* Hero */
+
+.hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    background: var(--gp-gradient-hero);
+}
+
+.heroContent {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    min-height: 260px;
+    padding: 40px 48px;
+}
+
+.heroText {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    max-width: 650px;
+}
+
+.heroTitle {
+    color: #292524;
+    font-size: clamp(1.8rem, 3vw, 2.5rem);
+}
+
+.heroDescription {
+    color: #292524;
+    max-width: 540px;
+    line-height: 1.6;
+}
+
+.heroButton {
+    background-color: var(--mui-palette-primary-main);
+    color: var(--mui-palette-primary-contrastText);
+}
+
+.heroDecoration {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.14;
+    pointer-events: none;
+}
+
+.heroIcon {
+    font-size: 200px;
+    color: #292524;
+}
+
+/* Planning section */
+
+.planningsSection {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+}
+
+.planningCount {
+    white-space: nowrap;
+}
+
+/* Responsive */
+
+@media (max-width: 900px) {
+    .dashboard {
+        gap: 32px;
+    }
+
+    .heroContent {
+        min-height: 220px;
+        padding: 32px;
+    }
+
+    .heroDecoration {
+        right: 16px;
+    }
+
+    .heroIcon {
+        font-size: 150px;
+    }
+}
+
+@media (max-width: 600px) {
+    .dashboard {
+        gap: 24px;
+    }
+
+    .heroContent {
+        min-height: auto;
+        padding: 32px 24px;
+    }
+
+    .heroText {
+        gap: 16px;
+    }
+
+    .heroTitle {
+        font-size: 1.8rem;
+    }
+
+    .heroDecoration {
+        display: none;
+    }
+
+    .sectionHeader {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

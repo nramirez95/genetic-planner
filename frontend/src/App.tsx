@@ -6,23 +6,22 @@ import DashboardPage from './pages/DashboardPage';
 import WizardPage from './pages/WizardPage';
 import ResultsPage from './pages/ResultsPage';
 import NotFoundPage from './pages/NotFoundPage';
+import PlanningDetailPage from './pages/PlanningDetailPage';
 
 export default function App() {
     return (
         <Routes>
             <Route element={<AppLayout />}>
-                <Route index element={<DashboardPage />} />
-
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/planning/new" element={<WizardPage />} />
                 <Route
-                    path="planning/new"
-                    element={<WizardPage />}
+                    path="/planning/:id"
+                    element={<PlanningDetailPage />}
                 />
-
                 <Route
-                    path="planning/:id/results"
+                    path="/planning/:id/results"
                     element={<ResultsPage />}
                 />
-
                 <Route path="*" element={<NotFoundPage />} />
             </Route>
         </Routes>
