@@ -1,0 +1,48 @@
+.header {
+    border-bottom: 1px solid var(--mui-palette-divider, #e5e7eb);
+    background-color: var(--mui-palette-background-paper, #ffffff);
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 64px;
+}
+
+.headerIdentity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.titleGroup {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.brand {
+    color: var(--mui-palette-primary-main, #2563eb);
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.subtitle {
+    color: var(--mui-palette-text-primary, #111827);
+    font-weight: 600;
+}
+
+@media (max-width: 600px) {
+    .toolbar {
+        gap: 8px;
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .brand {
+        font-size: 0.95rem;
+    }
+}
