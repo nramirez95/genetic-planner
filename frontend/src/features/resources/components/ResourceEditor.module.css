@@ -1,0 +1,63 @@
+
+.editor {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.sectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+    align-items: start;
+    gap: 12px;
+}
+
+.groupRow {
+    display: grid;
+    grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1.5fr)
+    minmax(100px, 0.7fr)
+    auto;
+    align-items: start;
+    gap: 12px;
+}
+
+@media (max-width: 800px) {
+    .sectionHeader {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .row,
+    .groupRow {
+        grid-template-columns: 1fr auto;
+    }
+
+    .row > :first-child,
+    .groupRow > :first-child,
+    .row > :nth-child(2),
+    .groupRow > :nth-child(2),
+    .groupRow > :nth-child(3) {
+        grid-column: 1;
+    }
+
+    .row > :last-child,
+    .groupRow > :last-child {
+        grid-column: 2;
+        grid-row: 1;
+    }
+}

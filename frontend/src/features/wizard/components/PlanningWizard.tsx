@@ -13,6 +13,8 @@ import BasicsStep from '../steps/BasicsStep';
 import PendingStep from '../steps/PendingStep';
 import WizardStepper from './WizardStepper';
 import WizardNavigation from './WizardNavigation';
+import { resourcesSchema } from '../../resources/schemas/resourcesSchema';
+import ResourcesStep from '../steps/ResourcesStep';
 
 import styles from './PlanningWizard.module.css';
 
@@ -45,9 +47,60 @@ export default function PlanningWizard() {
     const lastStep = WIZARD_STEPS.length - 1;
 
     function validateCurrentStep(): boolean {
+        if (currentStep.id === 'resources') {
+            clearErrors(['teachers', 'studentGroups']);
+
+            const values = getValues();
+
+            const result = resourcesSchema.safeParse({
+                teachers: values.teachers,
+                studentGroups: values.studentGroups,
+            });
+
+            if (result.success) {
+                return true;
+            }
+
+            for (const issue of result.error.issues) {
+                const [collection, index, property] = issue.path;
+
+                if (
+                    collection !== 'teachers' &&
+                    collection !== 'studentGroups'
+                ) {
+                    continue;
+                }
+
+                if (
+                    typeof index === 'number' &&
+                    (property === 'id' ||
+                        property === 'name' ||
+                        property === 'size')
+                ) {
+                    const path =
+                        `${collection}.${index}.${property}` as
+                            | `teachers.${number}.id`
+                            | `teachers.${number}.name`
+                            | `studentGroups.${number}.id`
+                            | `studentGroups.${number}.name`
+                            | `studentGroups.${number}.size`;
+
+                    setError(path, {
+                        type: 'validate',
+                        message: issue.message,
+                    });
+                } else {
+                    setError(collection, {
+                        type: 'validate',
+                        message: issue.message,
+                    });
+                }
+            }
+
+            return false;
+        }
+
         if (currentStep.id !== 'basics') {
-            // Validation for these steps will be added
-            // when their forms are implemented.
             return true;
         }
 
@@ -107,8 +160,8 @@ export default function PlanningWizard() {
         switch (currentStep.id) {
             case 'basics':
                 return <BasicsStep />;
-
             case 'resources':
+                return <ResourcesStep />;
             case 'activities':
             case 'timeSlotsLocations':
             case 'constraints':
