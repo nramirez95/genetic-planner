@@ -15,6 +15,8 @@ import WizardStepper from './WizardStepper';
 import WizardNavigation from './WizardNavigation';
 import { resourcesSchema } from '../../resources/schemas/resourcesSchema';
 import ResourcesStep from '../steps/ResourcesStep';
+import ActivitiesStep from '../steps/ActivitiesStep';
+import { validateActivities } from '../../activities/schemas/activitiesSchema';
 
 import styles from './PlanningWizard.module.css';
 
@@ -100,6 +102,49 @@ export default function PlanningWizard() {
             return false;
         }
 
+
+        if (currentStep.id === 'activities') {
+            clearErrors('lessons');
+
+            const values = getValues();
+            const result = validateActivities(values);
+
+            if (!result.success) {
+                for (const issue of result.error.issues) {
+                    const [index, property] = issue.path;
+
+                    if (
+                        typeof index === 'number' &&
+                        typeof property === 'string'
+                    ) {
+                        setError(
+                            `lessons.${index}.${property}` as
+                                `lessons.${number}.${keyof AcademicWizardValues['lessons'][number]}`,
+                            {
+                                type: 'validate',
+                                message: issue.message,
+                            },
+                        );
+                    }
+                }
+
+                return false;
+            }
+
+            for (const issue of result.issues) {
+                const path =
+                    `lessons.${issue.index}.${issue.field}` as
+                        `lessons.${number}.${keyof AcademicWizardValues['lessons'][number]}`;
+
+                setError(path, {
+                    type: 'validate',
+                    message: issue.message,
+                });
+            }
+
+            return result.issues.length === 0;
+        }
+
         if (currentStep.id !== 'basics') {
             return true;
         }
@@ -163,6 +208,7 @@ export default function PlanningWizard() {
             case 'resources':
                 return <ResourcesStep />;
             case 'activities':
+                return <ActivitiesStep />;
             case 'timeSlotsLocations':
             case 'constraints':
             case 'optimization':
