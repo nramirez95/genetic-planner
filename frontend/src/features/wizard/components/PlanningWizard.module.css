@@ -1,0 +1,89 @@
+
+.wizard {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding-bottom: 32px;
+}
+
+.header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.stepperPanel {
+    padding: 24px;
+    border-radius: 12px;
+}
+
+.contentPanel {
+    display: flex;
+    flex-direction: column;
+    min-height: 420px;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 24px;
+    padding: 32px;
+}
+
+.stepContent {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.navigation {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 32px;
+    border-top: 1px solid var(--gp-background-subtle);
+}
+
+@media (max-width: 900px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+
+    .stepperPanel {
+        padding: 20px;
+    }
+}
+
+@media (max-width: 600px) {
+    .wizard {
+        gap: 24px;
+    }
+
+    .content {
+        padding: 20px;
+    }
+
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .navigation {
+        padding: 16px 20px;
+    }
+}

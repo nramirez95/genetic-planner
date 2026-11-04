@@ -1,5 +1,6 @@
-import { Typography } from '@mui/material';
+
+import PlanningWizard from '../features/wizard/components/PlanningWizard';
 
 export default function WizardPage() {
-    return <Typography variant="h4">New planning</Typography>;
+    return <PlanningWizard />;
 }

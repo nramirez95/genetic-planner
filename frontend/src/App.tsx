@@ -7,13 +7,21 @@ import WizardPage from './pages/WizardPage';
 import ResultsPage from './pages/ResultsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PlanningDetailPage from './pages/PlanningDetailPage';
+import TemplateSelectionPage from './pages/TemplateSelectionPage';
 
 export default function App() {
     return (
         <Routes>
             <Route element={<AppLayout />}>
                 <Route path="/" element={<DashboardPage />} />
-                <Route path="/planning/new" element={<WizardPage />} />
+                <Route
+                    path="/planning/new"
+                    element={<TemplateSelectionPage />}
+                />
+                <Route
+                    path="/planning/new/academic"
+                    element={<WizardPage />}
+                />
                 <Route
                     path="/planning/:id"
                     element={<PlanningDetailPage />}
