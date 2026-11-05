@@ -17,11 +17,26 @@ import { resourcesSchema } from '../../resources/schemas/resourcesSchema';
 import ResourcesStep from '../steps/ResourcesStep';
 import ActivitiesStep from '../steps/ActivitiesStep';
 import { validateActivities } from '../../activities/schemas/activitiesSchema';
+import TimeSlotsLocationsStep, {
+    type SchedulingTab,
+} from '../steps/TimeSlotsLocationsStep';
+import { validateTeachingPeriods } from '../../scheduling/schemas/teachingPeriodsSchema';
+
+import { classroomsSchema } from '../../scheduling/schemas/classroomsSchema';
 
 import styles from './PlanningWizard.module.css';
 
 export default function PlanningWizard() {
     const [activeStep, setActiveStep] = useState(0);
+
+    const [schedulingTab, setSchedulingTab] =
+        useState<SchedulingTab>('periods');
+
+    const [invalidPeriodIndex, setInvalidPeriodIndex] =
+        useState<number | null>(null);
+
+    const [validationRequestId, setValidationRequestId] =
+        useState(0);
 
     const methods = useForm<AcademicWizardValues>({
         mode: 'onTouched',
@@ -102,7 +117,6 @@ export default function PlanningWizard() {
             return false;
         }
 
-
         if (currentStep.id === 'activities') {
             clearErrors('lessons');
 
@@ -144,6 +158,130 @@ export default function PlanningWizard() {
 
             return result.issues.length === 0;
         }
+
+        if (currentStep.id === 'timeSlotsLocations') {
+            clearErrors(['classrooms', 'teachingPeriods']);
+
+            const values = getValues();
+
+            let isValid = true;
+            let firstInvalidPeriodIndex: number | null = null;
+            let hasClassroomErrors = false;
+
+            const classroomsResult = classroomsSchema.safeParse(
+                values.classrooms,
+            );
+
+            if (!classroomsResult.success) {
+                isValid = false;
+                hasClassroomErrors = true;
+
+                for (const issue of classroomsResult.error.issues) {
+                    const [index, property] = issue.path;
+
+                    if (
+                        typeof index === 'number' &&
+                        (
+                            property === 'id' ||
+                            property === 'name' ||
+                            property === 'capacity'
+                        )
+                    ) {
+                        setError(
+                            `classrooms.${index}.${property}` as
+                                | `classrooms.${number}.id`
+                                | `classrooms.${number}.name`
+                                | `classrooms.${number}.capacity`,
+                            {
+                                type: 'validate',
+                                message: issue.message,
+                            },
+                        );
+                    }
+                }
+            }
+
+            const periodsResult = validateTeachingPeriods(
+                values.teachingPeriods,
+                values.horizonStart,
+                values.horizonEnd,
+            );
+
+            if (!periodsResult.success) {
+                isValid = false;
+
+                for (const issue of periodsResult.error.issues) {
+                    const [index, property] = issue.path;
+
+                    if (typeof index === 'number') {
+                        firstInvalidPeriodIndex =
+                            firstInvalidPeriodIndex === null
+                                ? index
+                                : Math.min(firstInvalidPeriodIndex, index);
+                    }
+
+                    if (
+                        typeof index === 'number' &&
+                        (
+                            property === 'id' ||
+                            property === 'start' ||
+                            property === 'end' ||
+                            property === 'label'
+                        )
+                    ) {
+                        setError(
+                            `teachingPeriods.${index}.${property}` as
+                                | `teachingPeriods.${number}.id`
+                                | `teachingPeriods.${number}.start`
+                                | `teachingPeriods.${number}.end`
+                                | `teachingPeriods.${number}.label`,
+                            {
+                                type: 'validate',
+                                message: issue.message,
+                            },
+                        );
+                    }
+                }
+            } else {
+                for (const issue of periodsResult.issues) {
+                    isValid = false;
+
+                    firstInvalidPeriodIndex =
+                        firstInvalidPeriodIndex === null
+                            ? issue.index
+                            : Math.min(firstInvalidPeriodIndex, issue.index);
+
+                    setError(
+                        `teachingPeriods.${issue.index}.${issue.field}` as
+                            | `teachingPeriods.${number}.id`
+                            | `teachingPeriods.${number}.start`
+                            | `teachingPeriods.${number}.end`,
+                        {
+                            type: 'validate',
+                            message: issue.message,
+                        },
+                    );
+                }
+            }
+
+            if (!isValid) {
+                // Prioritize teaching period errors.
+                if (firstInvalidPeriodIndex !== null) {
+                    setSchedulingTab('periods');
+                    setInvalidPeriodIndex(firstInvalidPeriodIndex);
+                } else if (hasClassroomErrors) {
+                    setSchedulingTab('classrooms');
+                    setInvalidPeriodIndex(null);
+                }
+
+                setValidationRequestId((current) => current + 1);
+            } else {
+                setInvalidPeriodIndex(null);
+            }
+
+            return isValid;
+        }
+
 
         if (currentStep.id !== 'basics') {
             return true;
@@ -210,6 +348,14 @@ export default function PlanningWizard() {
             case 'activities':
                 return <ActivitiesStep />;
             case 'timeSlotsLocations':
+                return (
+                    <TimeSlotsLocationsStep
+                        activeTab={schedulingTab}
+                        onTabChange={setSchedulingTab}
+                        invalidPeriodIndex={invalidPeriodIndex}
+                        validationRequestId={validationRequestId}
+                    />
+                );
             case 'constraints':
             case 'optimization':
             case 'review':
